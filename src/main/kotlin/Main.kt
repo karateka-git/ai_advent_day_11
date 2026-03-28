@@ -3,6 +3,8 @@ import agent.impl.MrAgent
 import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.ConsoleAgentLifecycleListener
 import agent.lifecycle.LoadingIndicator
+import agent.memory.MemoryStrategyFactory
+import agent.memory.MemoryStrategyOption
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.http.HttpClient
@@ -15,10 +17,8 @@ import llm.core.LanguageModelFactory
 import llm.core.model.ChatRole
 
 private const val CONFIG_FILE = "config/app.properties"
-private val CONTEXT_OVERFLOW_PRESET_FILE = Path.of("config/conversations/context_overflow_preset.json")
 private const val MODELS_COMMAND = "models"
 private const val USE_COMMAND = "use"
-private const val LOAD_OVERFLOW_PRESET_COMMAND = "load overflow_preset"
 
 private val consoleReader = BufferedReader(
     InputStreamReader(System.`in`, detectConsoleCharset())
@@ -36,18 +36,20 @@ fun main() {
         httpClient = httpClient
     )
     warmUpTokenCounter(languageModel, lifecycleListener)
-    var agent: Agent<String> = MrAgent(
+
+    var selectedMemoryStrategyOption = selectMemoryStrategyOption()
+    var agent: Agent<String> = createAgent(
         languageModel = languageModel,
-        lifecycleListener = lifecycleListener
+        lifecycleListener = lifecycleListener,
+        strategyId = selectedMemoryStrategyOption.id
     )
 
     println("Чат готов. Введите 'exit' или 'quit', чтобы завершить работу.")
     println(
         "Для просмотра моделей введите '$MODELS_COMMAND'. " +
-            "Для переключения модели введите '$USE_COMMAND <id>'. " +
-            "Для загрузки пресета переполнения введите '$LOAD_OVERFLOW_PRESET_COMMAND'."
+            "Для переключения модели введите '$USE_COMMAND <id>'."
     )
-    printCurrentModelInfo(agent)
+    printCurrentAgentInfo(agent, selectedMemoryStrategyOption)
 
     while (true) {
         print("${ChatRole.USER.displayName}: ")
@@ -68,16 +70,6 @@ fun main() {
             continue
         }
 
-        if (prompt.equals(LOAD_OVERFLOW_PRESET_COMMAND, ignoreCase = true)) {
-            try {
-                agent.replaceContextFromFile(CONTEXT_OVERFLOW_PRESET_FILE)
-                println("История текущей модели заменена содержимым context_overflow_preset.json.")
-            } catch (error: Exception) {
-                println("Не удалось загрузить context_overflow_preset.json: ${error.message}")
-            }
-            continue
-        }
-
         if (prompt.equals(MODELS_COMMAND, ignoreCase = true)) {
             println(formatModels(config, languageModel))
             continue
@@ -92,12 +84,13 @@ fun main() {
                     httpClient = httpClient
                 )
                 warmUpTokenCounter(languageModel, lifecycleListener)
-                agent = MrAgent(
+                agent = createAgent(
                     languageModel = languageModel,
-                    lifecycleListener = lifecycleListener
+                    lifecycleListener = lifecycleListener,
+                    strategyId = selectedMemoryStrategyOption.id
                 )
                 println("Текущая модель изменена.")
-                printCurrentModelInfo(agent)
+                printCurrentAgentInfo(agent, selectedMemoryStrategyOption)
             } catch (error: Exception) {
                 println("Не удалось переключить модель: ${error.message}")
             }
@@ -131,10 +124,49 @@ fun main() {
     }
 }
 
-private fun printCurrentModelInfo(agent: Agent<String>) {
+private fun createAgent(
+    languageModel: LanguageModel,
+    lifecycleListener: AgentLifecycleListener,
+    strategyId: String
+): Agent<String> =
+    MrAgent(
+        languageModel = languageModel,
+        lifecycleListener = lifecycleListener,
+        memoryStrategy = MemoryStrategyFactory.create(
+            strategyId = strategyId,
+            languageModel = languageModel,
+            lifecycleListener = lifecycleListener
+        )
+    )
+
+private fun selectMemoryStrategyOption(): MemoryStrategyOption {
+    val options = MemoryStrategyFactory.availableOptions()
+
+    println("Выберите стратегию памяти перед стартом агента:")
+    options.forEachIndexed { index, option ->
+        println("${index + 1}. ${option.displayName} - ${option.description}")
+    }
+
+    while (true) {
+        print("Введите номер стратегии [1-${options.size}]: ")
+        val selection = readConsoleLine()?.trim().orEmpty()
+        val index = selection.toIntOrNull()
+
+        if (index != null && index in 1..options.size) {
+            val option = options[index - 1]
+            println("Выбрана стратегия: ${option.displayName}")
+            return option
+        }
+
+        println("Некорректный выбор. Попробуйте ещё раз.")
+    }
+}
+
+private fun printCurrentAgentInfo(agent: Agent<String>, strategy: MemoryStrategyOption) {
     println("Агент: ${agent.info.name}")
     println("Описание: ${agent.info.description}")
     println("Модель: ${agent.info.model}")
+    println("Стратегия памяти: ${strategy.displayName}")
 }
 
 private fun formatModels(config: Properties, currentModel: LanguageModel): String =

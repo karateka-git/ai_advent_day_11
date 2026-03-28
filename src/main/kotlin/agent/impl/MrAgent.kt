@@ -10,6 +10,7 @@ import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.NoOpAgentLifecycleListener
 import agent.memory.DefaultMemoryManager
 import agent.memory.MemoryManager
+import agent.memory.MemoryStrategy
 import agent.memory.SummaryCompressionMemoryStrategy
 import agent.memory.summarizer.LlmConversationSummarizer
 import java.nio.file.Path
@@ -19,20 +20,21 @@ class MrAgent(
     private val languageModel: LanguageModel,
     private val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
     lifecycleListener: AgentLifecycleListener = NoOpAgentLifecycleListener,
+    memoryStrategy: MemoryStrategy = SummaryCompressionMemoryStrategy(
+        recentMessagesCount = 2,
+        summaryBatchSize = 3,
+        summarizer = LlmConversationSummarizer(
+            languageModel = languageModel,
+            lifecycleListener = lifecycleListener
+        )
+    ),
     private val memoryManager: MemoryManager = DefaultMemoryManager(
         languageModel = languageModel,
         systemPrompt = buildSystemPrompt(
             systemPrompt = systemPrompt,
             responseFormatInstruction = TextResponseFormat.formatInstruction
         ),
-        memoryStrategy = SummaryCompressionMemoryStrategy(
-            recentMessagesCount = 2,
-            summaryBatchSize = 3,
-            summarizer = LlmConversationSummarizer(
-                languageModel = languageModel,
-                lifecycleListener = lifecycleListener
-            )
-        )
+        memoryStrategy = memoryStrategy
     )
 ) : Agent<String> {
     override val responseFormat: ResponseFormat<String> = TextResponseFormat
