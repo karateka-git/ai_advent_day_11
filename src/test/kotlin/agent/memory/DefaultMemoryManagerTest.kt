@@ -106,7 +106,7 @@ class DefaultMemoryManagerTest {
     }
 
     @Test
-    fun `summary strategy compresses history after assistant response`() {
+    fun `summary strategy compresses history before model request`() {
         val tempDir = Files.createTempDirectory("memory-manager-test")
         val store = JsonConversationStore(tempDir.resolve("conversation.json"))
         val manager = DefaultMemoryManager(
@@ -124,6 +124,18 @@ class DefaultMemoryManagerTest {
         manager.appendAssistantMessage("a1")
         manager.appendUserMessage("u2")
         manager.appendAssistantMessage("a2")
+
+        assertEquals(
+            listOf(
+                ChatMessage(role = ChatRole.SYSTEM, content = "Системное сообщение"),
+                ChatMessage(role = ChatRole.USER, content = "u1"),
+                ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+                ChatMessage(role = ChatRole.USER, content = "u2"),
+                ChatMessage(role = ChatRole.ASSISTANT, content = "a2")
+            ),
+            manager.currentConversation()
+        )
+
         val effectiveContext = manager.appendUserMessage("u3")
 
         assertEquals(
@@ -139,7 +151,15 @@ class DefaultMemoryManagerTest {
             ),
             effectiveContext
         )
-        assertEquals(4, manager.currentConversation().size)
+        assertEquals(
+            listOf(
+                ChatMessage(role = ChatRole.SYSTEM, content = "Системное сообщение"),
+                ChatMessage(role = ChatRole.USER, content = "u2"),
+                ChatMessage(role = ChatRole.ASSISTANT, content = "a2"),
+                ChatMessage(role = ChatRole.USER, content = "u3")
+            ),
+            manager.currentConversation()
+        )
     }
 }
 

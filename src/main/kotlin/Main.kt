@@ -1,5 +1,8 @@
 import agent.core.Agent
 import agent.impl.MrAgent
+import agent.lifecycle.AgentLifecycleListener
+import agent.lifecycle.ConsoleAgentLifecycleListener
+import agent.lifecycle.LoadingIndicator
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.http.HttpClient
@@ -7,7 +10,6 @@ import java.nio.charset.Charset
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Properties
-import java.util.concurrent.atomic.AtomicBoolean
 import llm.core.LanguageModel
 import llm.core.LanguageModelFactory
 import llm.core.model.ChatRole
@@ -23,16 +25,21 @@ private val consoleReader = BufferedReader(
 )
 private val systemConsole = System.console()
 private val tokenStatsFormatter = ConsoleTokenStatsFormatter()
+private val loadingIndicator = LoadingIndicator()
 
 fun main() {
     val config = loadConfig()
     val httpClient = HttpClient.newHttpClient()
+    val lifecycleListener: AgentLifecycleListener = ConsoleAgentLifecycleListener(loadingIndicator)
     var languageModel: LanguageModel = LanguageModelFactory.createDefault(
         config = config,
         httpClient = httpClient
     )
-    warmUpTokenCounter(languageModel)
-    var agent: Agent<String> = MrAgent(languageModel = languageModel)
+    warmUpTokenCounter(languageModel, lifecycleListener)
+    var agent: Agent<String> = MrAgent(
+        languageModel = languageModel,
+        lifecycleListener = lifecycleListener
+    )
 
     println("Чат готов. Введите 'exit' или 'quit', чтобы завершить работу.")
     println(
@@ -84,8 +91,11 @@ fun main() {
                     config = config,
                     httpClient = httpClient
                 )
-                warmUpTokenCounter(languageModel)
-                agent = MrAgent(languageModel = languageModel)
+                warmUpTokenCounter(languageModel, lifecycleListener)
+                agent = MrAgent(
+                    languageModel = languageModel,
+                    lifecycleListener = lifecycleListener
+                )
                 println("Текущая модель изменена.")
                 printCurrentModelInfo(agent)
             } catch (error: Exception) {
@@ -101,13 +111,11 @@ fun main() {
                 println()
             }
 
-            val loading = LoadingIndicator()
-            loading.start()
-
             val response = try {
+                loadingIndicator.start("Ассистент думает")
                 agent.ask(prompt)
             } finally {
-                loading.stop()
+                loadingIndicator.stop()
             }
 
             println()
@@ -137,7 +145,7 @@ private fun formatModels(config: Properties, currentModel: LanguageModel): Strin
             append(marker)
             append(" ")
             append(option.id)
-            append(" — ")
+            append(" - ")
             append(option.displayName)
             if (!option.isConfigured) {
                 append(" (недоступна: ${option.unavailableReason})")
@@ -153,8 +161,16 @@ private fun currentModelId(languageModel: LanguageModel): String =
         else -> languageModel.info.name.lowercase()
     }
 
-private fun warmUpTokenCounter(languageModel: LanguageModel) {
-    languageModel.tokenCounter?.countText("")
+private fun warmUpTokenCounter(
+    languageModel: LanguageModel,
+    lifecycleListener: AgentLifecycleListener
+) {
+    lifecycleListener.onModelWarmupStarted()
+    try {
+        languageModel.tokenCounter?.countText("")
+    } finally {
+        lifecycleListener.onModelWarmupFinished()
+    }
 }
 
 private fun detectConsoleCharset(): Charset {
@@ -176,33 +192,5 @@ private fun loadConfig(): Properties {
 
     return Properties().apply {
         Files.newInputStream(configPath).use(::load)
-    }
-}
-
-private class LoadingIndicator {
-    private val running = AtomicBoolean(false)
-    private var thread: Thread? = null
-
-    fun start() {
-        running.set(true)
-        thread = Thread {
-            var step = 0
-            while (running.get()) {
-                val dots = ".".repeat(step % 4)
-                val padding = " ".repeat(3 - dots.length)
-                print("\rАссистент думает$dots$padding")
-                Thread.sleep(350)
-                step++
-            }
-        }.apply {
-            isDaemon = true
-            start()
-        }
-    }
-
-    fun stop() {
-        running.set(false)
-        thread?.join(500)
-        print("\r${" ".repeat(40)}\r")
     }
 }

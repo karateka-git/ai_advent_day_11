@@ -1,6 +1,8 @@
 package agent.memory.summarizer
 
+import agent.lifecycle.AgentLifecycleListener
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import llm.core.LanguageModel
 import llm.core.model.ChatMessage
@@ -10,39 +12,66 @@ import llm.core.model.LanguageModelResponse
 
 class LlmConversationSummarizerTest {
     @Test
-    fun `summarize sends dedicated summary prompt to language model`() {
+    fun `summarize sends dedicated summary prompt to language model and notifies listener`() {
         val languageModel = RecordingLanguageModel("Краткое summary")
-        val summarizer = LlmConversationSummarizer(languageModel)
+        val lifecycleListener = RecordingAgentLifecycleListener()
+        val summarizer = LlmConversationSummarizer(
+            languageModel = languageModel,
+            lifecycleListener = lifecycleListener
+        )
+        val firstUserMessage = "Меня зовут Илья."
+        val assistantMessage = "Приятно познакомиться."
+        val secondUserMessage = "Мне важна экономия токенов."
 
         val summary = summarizer.summarize(
             listOf(
-                ChatMessage(role = ChatRole.USER, content = "Меня зовут Илья."),
-                ChatMessage(role = ChatRole.ASSISTANT, content = "Приятно познакомиться."),
-                ChatMessage(role = ChatRole.USER, content = "Мне важна экономия токенов.")
+                ChatMessage(role = ChatRole.USER, content = firstUserMessage),
+                ChatMessage(role = ChatRole.ASSISTANT, content = assistantMessage),
+                ChatMessage(role = ChatRole.USER, content = secondUserMessage)
             )
         )
 
         assertEquals("Краткое summary", summary)
-        assertEquals(
-            listOf(
-                ChatMessage(
-                    role = ChatRole.SYSTEM,
-                    content =
-                        "Ты делаешь краткое резюме фрагмента диалога. " +
-                            "Сохраняй только важные факты, ограничения, цели пользователя, договорённости и незавершённые задачи. " +
-                            "Не выдумывай факты. Пиши кратко, по-русски, в виде связного summary без лишнего вступления."
-                ),
-                ChatMessage(
-                    role = ChatRole.USER,
-                    content =
-                        "Сожми следующий фрагмент диалога:\n\n" +
-                            "Пользователь: Меня зовут Илья.\n" +
-                            "Ассистент: Приятно познакомиться.\n" +
-                            "Пользователь: Мне важна экономия токенов."
-                )
-            ),
-            languageModel.recordedMessages
-        )
+        assertEquals(1, lifecycleListener.contextCompressionStartedCount)
+        assertEquals(1, lifecycleListener.contextCompressionFinishedCount)
+        assertEquals(0, lifecycleListener.modelWarmupStartedCount)
+        assertEquals(0, lifecycleListener.modelWarmupFinishedCount)
+        assertEquals(2, languageModel.recordedMessages.size)
+        assertEquals(ChatRole.SYSTEM, languageModel.recordedMessages[0].role)
+        assertEquals(ChatRole.USER, languageModel.recordedMessages[1].role)
+        assertContains(languageModel.recordedMessages[0].content, "summary")
+        assertContains(languageModel.recordedMessages[1].content, ChatRole.USER.displayName)
+        assertContains(languageModel.recordedMessages[1].content, ChatRole.ASSISTANT.displayName)
+        assertContains(languageModel.recordedMessages[1].content, firstUserMessage)
+        assertContains(languageModel.recordedMessages[1].content, assistantMessage)
+        assertContains(languageModel.recordedMessages[1].content, secondUserMessage)
+    }
+}
+
+private class RecordingAgentLifecycleListener : AgentLifecycleListener {
+    var modelWarmupStartedCount: Int = 0
+        private set
+    var modelWarmupFinishedCount: Int = 0
+        private set
+    var contextCompressionStartedCount: Int = 0
+        private set
+    var contextCompressionFinishedCount: Int = 0
+        private set
+
+    override fun onModelWarmupStarted() {
+        modelWarmupStartedCount++
+    }
+
+    override fun onModelWarmupFinished() {
+        modelWarmupFinishedCount++
+    }
+
+    override fun onContextCompressionStarted() {
+        contextCompressionStartedCount++
+    }
+
+    override fun onContextCompressionFinished() {
+        contextCompressionFinishedCount++
     }
 }
 

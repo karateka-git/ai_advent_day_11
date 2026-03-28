@@ -6,6 +6,8 @@ import agent.core.AgentResponse
 import agent.core.AgentTokenStats
 import agent.format.ResponseFormat
 import agent.format.TextResponseFormat
+import agent.lifecycle.AgentLifecycleListener
+import agent.lifecycle.NoOpAgentLifecycleListener
 import agent.memory.DefaultMemoryManager
 import agent.memory.MemoryManager
 import agent.memory.SummaryCompressionMemoryStrategy
@@ -16,6 +18,7 @@ import llm.core.LanguageModel
 class MrAgent(
     private val languageModel: LanguageModel,
     private val systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
+    lifecycleListener: AgentLifecycleListener = NoOpAgentLifecycleListener,
     private val memoryManager: MemoryManager = DefaultMemoryManager(
         languageModel = languageModel,
         systemPrompt = buildSystemPrompt(
@@ -25,7 +28,10 @@ class MrAgent(
         memoryStrategy = SummaryCompressionMemoryStrategy(
             recentMessagesCount = 2,
             summaryBatchSize = 3,
-            summarizer = LlmConversationSummarizer(languageModel)
+            summarizer = LlmConversationSummarizer(
+                languageModel = languageModel,
+                lifecycleListener = lifecycleListener
+            )
         )
     )
 ) : Agent<String> {

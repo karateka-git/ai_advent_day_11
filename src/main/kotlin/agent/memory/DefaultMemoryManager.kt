@@ -51,10 +51,8 @@ class DefaultMemoryManager(
     }
 
     override fun appendAssistantMessage(content: String) {
-        memoryState = memoryStrategy.refreshState(
-            memoryState.copy(
-                messages = memoryState.messages + ChatMessage(role = ChatRole.ASSISTANT, content = content)
-            )
+        memoryState = memoryState.copy(
+            messages = memoryState.messages + ChatMessage(role = ChatRole.ASSISTANT, content = content)
         )
         saveState()
     }

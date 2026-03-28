@@ -1,31 +1,39 @@
 package agent.memory.summarizer
 
+import agent.lifecycle.AgentLifecycleListener
+import agent.lifecycle.NoOpAgentLifecycleListener
 import llm.core.LanguageModel
 import llm.core.model.ChatMessage
 import llm.core.model.ChatRole
 
 class LlmConversationSummarizer(
-    private val languageModel: LanguageModel
+    private val languageModel: LanguageModel,
+    private val lifecycleListener: AgentLifecycleListener = NoOpAgentLifecycleListener
 ) : ConversationSummarizer {
     override fun summarize(messages: List<ChatMessage>): String {
         require(messages.isNotEmpty()) {
             "Нельзя построить summary для пустого списка сообщений."
         }
 
-        val response = languageModel.complete(
-            listOf(
-                ChatMessage(
-                    role = ChatRole.SYSTEM,
-                    content = SUMMARY_SYSTEM_PROMPT
-                ),
-                ChatMessage(
-                    role = ChatRole.USER,
-                    content = buildSummaryInput(messages)
+        lifecycleListener.onContextCompressionStarted()
+        try {
+            val response = languageModel.complete(
+                listOf(
+                    ChatMessage(
+                        role = ChatRole.SYSTEM,
+                        content = SUMMARY_SYSTEM_PROMPT
+                    ),
+                    ChatMessage(
+                        role = ChatRole.USER,
+                        content = buildSummaryInput(messages)
+                    )
                 )
             )
-        )
 
-        return response.content.trim()
+            return response.content.trim()
+        } finally {
+            lifecycleListener.onContextCompressionFinished()
+        }
     }
 
     private fun buildSummaryInput(messages: List<ChatMessage>): String =
