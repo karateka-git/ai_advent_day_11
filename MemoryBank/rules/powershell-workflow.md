@@ -29,7 +29,7 @@ Start-Process powershell -ArgumentList '-NoExit','-Command','Set-Location ''C:\U
 
 Если пользователь пишет `собери проект`, по умолчанию это означает один обязательный атомарный workflow:
 
-1. очистить runtime-файлы истории в `config/conversations/`, но не удалять пресеты;
+1. очистить runtime-файлы истории в `config/conversations/`;
 2. выполнить сборку:
 
 ```powershell
@@ -48,7 +48,6 @@ Start-Process powershell -ArgumentList '-NoExit','-Command','Set-Location ''C:\U
 
 Правило очистки истории:
 - нужно удалять только runtime-файлы истории моделей в `config/conversations/`;
-- нельзя удалять `context_overflow_preset.json`;
 - нельзя удалять всю папку `config/conversations/` целиком.
 
 Дополнительное обязательное правило:
@@ -57,7 +56,7 @@ Start-Process powershell -ArgumentList '-NoExit','-Command','Set-Location ''C:\U
 - если один из промежуточных шагов завершился неуспешно, нужно сообщить, что workflow прерван на этом шаге и запуск не был выполнен.
 
 Короткий чеклист для `собери проект`:
-1. удалить runtime-файлы истории в `config/conversations/`, кроме `context_overflow_preset.json`
+1. удалить runtime-файлы истории в `config/conversations/`
 2. `.\gradlew.bat build`
 3. `.\gradlew.bat installDist`
 4. `Start-Process ... ai_advent_day_9.bat`

@@ -5,4 +5,5 @@ build/
 *.iml
 config/app.properties
 config/conversation.json
+config/conversations/*
 CODEX_INFORMATION.md
