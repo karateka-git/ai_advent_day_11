@@ -1,4 +1,4 @@
-﻿package agent.memory.strategy.facts
+﻿package agent.memory.strategy.stickyfacts
 
 import llm.core.model.ChatMessage
 

@@ -1,11 +1,11 @@
 package ui.cli
 
-import agent.capability.BranchingCapability
 import agent.capability.capability
 import agent.core.Agent
 import agent.lifecycle.AgentLifecycleListener
 import agent.memory.strategy.MemoryStrategyOption
 import agent.memory.strategy.MemoryStrategyType
+import agent.memory.strategy.branching.BranchingCapability
 import app.output.AppEvent
 import app.output.AppEventSink
 import java.net.http.HttpClient

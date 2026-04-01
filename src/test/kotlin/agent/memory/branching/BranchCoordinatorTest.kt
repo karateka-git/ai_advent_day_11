@@ -1,4 +1,4 @@
-package agent.memory.branching
+package agent.memory.strategy.branching
 
 import agent.memory.model.BranchConversationState
 import agent.memory.model.BranchingStrategyState

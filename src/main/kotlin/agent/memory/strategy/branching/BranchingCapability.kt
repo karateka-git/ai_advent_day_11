@@ -1,5 +1,6 @@
-package agent.capability
+﻿package agent.memory.strategy.branching
 
+import agent.capability.AgentCapability
 import agent.core.BranchCheckpointInfo
 import agent.core.BranchInfo
 import agent.core.BranchingStatus

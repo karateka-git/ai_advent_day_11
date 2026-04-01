@@ -1,12 +1,12 @@
 package agent.memory
 
 import agent.memory.strategy.MemoryStrategyFactory
-import agent.memory.strategy.BranchingMemoryStrategy
+import agent.memory.strategy.branching.BranchingMemoryStrategy
 import agent.memory.strategy.MemoryStrategyType
-import agent.memory.strategy.NoCompressionMemoryStrategy
-import agent.memory.strategy.SlidingWindowMemoryStrategy
-import agent.memory.strategy.StickyFactsMemoryStrategy
-import agent.memory.strategy.SummaryCompressionMemoryStrategy
+import agent.memory.strategy.nocompression.NoCompressionMemoryStrategy
+import agent.memory.strategy.slidingwindow.SlidingWindowMemoryStrategy
+import agent.memory.strategy.stickyfacts.StickyFactsMemoryStrategy
+import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

@@ -1,11 +1,11 @@
-﻿package agent.memory.strategy
+﻿package agent.memory.strategy.summary
 
 import agent.memory.core.MemoryStateRefreshMode
 import agent.memory.core.MemoryStrategy
 import agent.memory.model.ConversationSummary
 import agent.memory.model.MemoryState
 import agent.memory.model.SummaryStrategyState
-import agent.memory.strategy.summary.ConversationSummarizer
+import agent.memory.strategy.MemoryStrategyType
 import llm.core.model.ChatMessage
 import llm.core.model.ChatRole
 

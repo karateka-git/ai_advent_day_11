@@ -1,6 +1,5 @@
 package devtools.comparison
 
-import agent.capability.BranchingCapability
 import agent.capability.capability
 import agent.format.TextResponseFormat
 import agent.impl.MrAgent
@@ -8,6 +7,7 @@ import agent.lifecycle.NoOpAgentLifecycleListener
 import agent.memory.core.DefaultMemoryManager
 import agent.memory.strategy.MemoryStrategyFactory
 import agent.memory.strategy.MemoryStrategyOption
+import agent.memory.strategy.branching.BranchingCapability
 import agent.storage.JsonConversationStore
 import java.nio.file.Files
 import java.nio.file.Path

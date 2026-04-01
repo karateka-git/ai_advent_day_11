@@ -1,8 +1,13 @@
 ﻿package agent.memory.strategy
 
 import agent.memory.core.MemoryStrategy
+import agent.memory.strategy.branching.BranchingMemoryStrategy
+import agent.memory.strategy.nocompression.NoCompressionMemoryStrategy
+import agent.memory.strategy.slidingwindow.SlidingWindowMemoryStrategy
+import agent.memory.strategy.stickyfacts.LlmConversationFactsExtractor
+import agent.memory.strategy.stickyfacts.StickyFactsMemoryStrategy
 import agent.memory.strategy.summary.LlmConversationSummarizer
-import agent.memory.strategy.facts.LlmConversationFactsExtractor
+import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
 import llm.core.LanguageModel
 
 /**

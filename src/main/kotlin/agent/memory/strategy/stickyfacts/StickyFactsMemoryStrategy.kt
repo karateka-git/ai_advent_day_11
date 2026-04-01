@@ -1,8 +1,8 @@
-﻿package agent.memory.strategy
+﻿package agent.memory.strategy.stickyfacts
 
 import agent.memory.core.MemoryStateRefreshMode
 import agent.memory.core.MemoryStrategy
-import agent.memory.strategy.facts.ConversationFactsExtractor
+import agent.memory.strategy.MemoryStrategyType
 import agent.memory.model.MemoryState
 import agent.memory.model.StickyFactsStrategyState
 import llm.core.model.ChatMessage

@@ -1,7 +1,8 @@
-﻿package agent.memory.strategy
+﻿package agent.memory.strategy.nocompression
 
 import agent.memory.core.MemoryStrategy
 import agent.memory.model.MemoryState
+import agent.memory.strategy.MemoryStrategyType
 import llm.core.model.ChatMessage
 
 /**

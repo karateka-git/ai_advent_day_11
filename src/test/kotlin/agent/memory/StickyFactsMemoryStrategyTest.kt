@@ -5,8 +5,8 @@ import agent.memory.model.MemoryMetadata
 import agent.memory.model.MemoryState
 import agent.memory.model.StickyFactsStrategyState
 import agent.memory.strategy.MemoryStrategyType
-import agent.memory.strategy.StickyFactsMemoryStrategy
-import agent.memory.strategy.facts.ConversationFactsExtractor
+import agent.memory.strategy.stickyfacts.ConversationFactsExtractor
+import agent.memory.strategy.stickyfacts.StickyFactsMemoryStrategy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import llm.core.model.ChatMessage

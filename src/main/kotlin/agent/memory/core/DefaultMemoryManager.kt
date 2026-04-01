@@ -1,7 +1,7 @@
 package agent.memory.core
 
 import agent.capability.AgentCapability
-import agent.capability.BranchingCapability
+import agent.memory.strategy.branching.BranchingCapability
 import agent.core.AgentTokenStats
 import agent.core.BranchCheckpointInfo
 import agent.core.BranchInfo
@@ -9,12 +9,12 @@ import agent.core.BranchingStatus
 import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.ContextCompressionStats
 import agent.lifecycle.NoOpAgentLifecycleListener
-import agent.memory.branching.BranchCoordinator
+import agent.memory.strategy.branching.BranchCoordinator
 import agent.memory.model.MemoryMetadata
 import agent.memory.model.MemoryState
 import agent.memory.persistence.ConversationMemoryStateMapper
 import agent.memory.strategy.MemoryStrategyType
-import agent.memory.strategy.NoCompressionMemoryStrategy
+import agent.memory.strategy.nocompression.NoCompressionMemoryStrategy
 import agent.storage.JsonConversationStore
 import java.nio.file.Path
 import llm.core.LanguageModel

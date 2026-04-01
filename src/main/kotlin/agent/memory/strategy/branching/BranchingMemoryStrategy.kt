@@ -1,10 +1,11 @@
-package agent.memory.strategy
+﻿package agent.memory.strategy.branching
 
 import agent.memory.core.MemoryStateRefreshMode
 import agent.memory.core.MemoryStrategy
 import agent.memory.model.BranchConversationState
 import agent.memory.model.BranchingStrategyState
 import agent.memory.model.MemoryState
+import agent.memory.strategy.MemoryStrategyType
 import llm.core.model.ChatMessage
 
 /**

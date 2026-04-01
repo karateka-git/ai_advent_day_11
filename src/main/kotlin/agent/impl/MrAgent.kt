@@ -12,7 +12,7 @@ import agent.lifecycle.NoOpAgentLifecycleListener
 import agent.memory.core.DefaultMemoryManager
 import agent.memory.core.MemoryManager
 import agent.memory.core.MemoryStrategy
-import agent.memory.strategy.SummaryCompressionMemoryStrategy
+import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
 import agent.memory.strategy.summary.LlmConversationSummarizer
 import java.nio.file.Path
 import llm.core.LanguageModel

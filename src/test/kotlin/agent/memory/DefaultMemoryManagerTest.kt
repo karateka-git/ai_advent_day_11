@@ -4,10 +4,11 @@ import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.ContextCompressionStats
 import agent.memory.core.DefaultMemoryManager
 import agent.memory.core.MemoryStrategy
-import agent.memory.strategy.BranchingMemoryStrategy
+import agent.memory.strategy.branching.BranchingCapability
+import agent.memory.strategy.branching.BranchingMemoryStrategy
 import agent.memory.strategy.MemoryStrategyType
-import agent.memory.strategy.NoCompressionMemoryStrategy
-import agent.memory.strategy.SummaryCompressionMemoryStrategy
+import agent.memory.strategy.nocompression.NoCompressionMemoryStrategy
+import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
 import agent.memory.model.MemoryMetadata
 import agent.memory.model.MemoryState
 import agent.memory.strategy.summary.ConversationSummarizer
@@ -243,7 +244,7 @@ class DefaultMemoryManagerTest {
             memoryStrategy = NoCompressionMemoryStrategy()
         )
 
-        kotlin.test.assertNull(manager.capability(agent.capability.BranchingCapability::class.java))
+        kotlin.test.assertNull(manager.capability(BranchingCapability::class.java))
     }
 
     @Test
@@ -257,7 +258,7 @@ class DefaultMemoryManagerTest {
             memoryStrategy = BranchingMemoryStrategy()
         )
         val branchingCapability = checkNotNull(
-            manager.capability(agent.capability.BranchingCapability::class.java)
+            manager.capability(BranchingCapability::class.java)
         )
 
         manager.appendUserMessage("main-u1")

@@ -1,5 +1,4 @@
 import agent.capability.AgentCapability
-import agent.capability.BranchingCapability
 import agent.core.Agent
 import agent.core.AgentInfo
 import agent.core.AgentResponse
@@ -26,6 +25,7 @@ import llm.core.model.ChatMessage
 import llm.core.model.LanguageModelInfo
 import llm.core.model.LanguageModelOption
 import llm.core.model.LanguageModelResponse
+import agent.memory.strategy.branching.BranchingCapability
 import ui.cli.CliSessionController
 import ui.cli.CliSessionControllerResult
 import ui.cli.CliSessionState
