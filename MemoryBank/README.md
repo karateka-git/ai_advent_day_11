@@ -6,3 +6,8 @@
 
 - `rules/` - проектные устойчивые правила и специальные трактовки команд
 - `notes/` - короткие заметки и обзор проекта
+
+## Связанные проектные артефакты
+
+- основной ручной smoke-check сценарий лежит в [docs/manual-smoke-checklist.md](/C:/Users/compadre/Downloads/Projects/AiAdvent/day_10/docs/manual-smoke-checklist.md)
+- `MemoryBank` только ссылается на этот сценарий и задаёт правило, когда его использовать

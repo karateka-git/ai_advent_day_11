@@ -20,6 +20,7 @@ class JsonConversationStore(
     private val storagePath: Path
 ) : ConversationStore {
     private val json = Json {
+        classDiscriminator = "strategyType"
         ignoreUnknownKeys = true
         prettyPrint = true
     }

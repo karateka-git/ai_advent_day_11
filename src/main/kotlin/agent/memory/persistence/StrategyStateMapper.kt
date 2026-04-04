@@ -7,11 +7,13 @@ import agent.memory.model.ConversationSummary
 import agent.memory.model.StickyFactsStrategyState
 import agent.memory.model.StrategyState
 import agent.memory.model.SummaryStrategyState
-import agent.memory.strategy.MemoryStrategyType
 import agent.storage.mapper.ConversationMapper
 import agent.storage.model.StoredBranchCheckpoint
 import agent.storage.model.StoredBranchConversation
+import agent.storage.model.StoredBranchingStrategyState
+import agent.storage.model.StoredStickyFactsStrategyState
 import agent.storage.model.StoredStrategyState
+import agent.storage.model.StoredSummaryStrategyState
 import agent.storage.model.StoredSummary
 
 /**
@@ -28,16 +30,16 @@ class StrategyStateMapper(
             return null
         }
 
-        return when (storedStrategyState.strategyType?.let(MemoryStrategyType::fromId)) {
-            MemoryStrategyType.SUMMARY_COMPRESSION -> SummaryStrategyState(
+        return when (storedStrategyState) {
+            is StoredSummaryStrategyState -> SummaryStrategyState(
                 summary = storedStrategyState.summary?.toRuntimeSummary(),
-                coveredMessagesCount = storedStrategyState.summaryCoveredMessagesCount
+                coveredMessagesCount = storedStrategyState.coveredMessagesCount
             )
-            MemoryStrategyType.STICKY_FACTS -> StickyFactsStrategyState(
+            is StoredStickyFactsStrategyState -> StickyFactsStrategyState(
                 facts = storedStrategyState.facts,
-                coveredMessagesCount = storedStrategyState.factsCoveredMessagesCount
+                coveredMessagesCount = storedStrategyState.coveredMessagesCount
             )
-            MemoryStrategyType.BRANCHING -> BranchingStrategyState(
+            is StoredBranchingStrategyState -> BranchingStrategyState(
                 activeBranchName = storedStrategyState.activeBranchName ?: BranchingStrategyState.DEFAULT_BRANCH_NAME,
                 latestCheckpointName = storedStrategyState.latestCheckpointName,
                 checkpoints = storedStrategyState.checkpoints.map { checkpoint ->
@@ -54,7 +56,6 @@ class StrategyStateMapper(
                     )
                 }
             )
-            else -> null
         }
     }
 
@@ -64,13 +65,11 @@ class StrategyStateMapper(
     fun toStored(strategyState: StrategyState?): StoredStrategyState? =
         when (strategyState) {
             null -> null
-            is StickyFactsStrategyState -> StoredStrategyState(
-                strategyType = strategyState.strategyType.id,
+            is StickyFactsStrategyState -> StoredStickyFactsStrategyState(
                 facts = strategyState.facts,
-                factsCoveredMessagesCount = strategyState.coveredMessagesCount
+                coveredMessagesCount = strategyState.coveredMessagesCount
             )
-            is BranchingStrategyState -> StoredStrategyState(
-                strategyType = strategyState.strategyType.id,
+            is BranchingStrategyState -> StoredBranchingStrategyState(
                 activeBranchName = strategyState.activeBranchName,
                 latestCheckpointName = strategyState.latestCheckpointName,
                 checkpoints = strategyState.checkpoints.map { checkpoint ->
@@ -87,10 +86,9 @@ class StrategyStateMapper(
                     )
                 }
             )
-            is SummaryStrategyState -> StoredStrategyState(
-                strategyType = strategyState.strategyType.id,
+            is SummaryStrategyState -> StoredSummaryStrategyState(
                 summary = strategyState.summary?.toStoredSummary(),
-                summaryCoveredMessagesCount = strategyState.coveredMessagesCount
+                coveredMessagesCount = strategyState.coveredMessagesCount
             )
         }
 

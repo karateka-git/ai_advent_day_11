@@ -14,7 +14,7 @@ import agent.memory.strategy.summary.ConversationSummarizer
 import agent.storage.JsonConversationStore
 import agent.storage.model.ConversationMemoryState
 import agent.storage.model.StoredMessage
-import agent.storage.model.StoredStrategyState
+import agent.storage.model.StoredSummaryStrategyState
 import agent.storage.model.StoredSummary
 import java.nio.file.Files
 import kotlin.test.Test
@@ -199,13 +199,12 @@ class DefaultMemoryManagerTest {
                     StoredMessage(role = "assistant", content = "a1"),
                     StoredMessage(role = "user", content = "u2")
                 ),
-                strategyState = StoredStrategyState(
-                    strategyType = "summary_compression",
+                strategyState = StoredSummaryStrategyState(
                     summary = StoredSummary(
                         content = "Сжатый фрагмент",
                         coveredMessagesCount = 2
                     ),
-                    summaryCoveredMessagesCount = 2
+                    coveredMessagesCount = 2
                 )
             )
         )

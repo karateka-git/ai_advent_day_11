@@ -2,7 +2,7 @@
 
 import agent.storage.model.ConversationMemoryState
 import agent.storage.model.StoredMessage
-import agent.storage.model.StoredStrategyState
+import agent.storage.model.StoredSummaryStrategyState
 import agent.storage.model.StoredSummary
 import java.nio.file.Files
 import kotlin.io.path.writeText
@@ -70,12 +70,12 @@ class JsonConversationStoreTest {
                 StoredMessage(role = "system", content = "Ты помощник."),
                 StoredMessage(role = "user", content = "Привет")
             ),
-            strategyState = StoredStrategyState(
-                strategyType = "summary_compression",
+            strategyState = StoredSummaryStrategyState(
                 summary = StoredSummary(
                     content = "Пользователь поздоровался.",
                     coveredMessagesCount = 2
-                )
+                ),
+                coveredMessagesCount = 2
             )
         )
 

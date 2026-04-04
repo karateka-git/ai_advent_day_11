@@ -7,7 +7,6 @@ import agent.memory.model.ConversationSummary
 import agent.memory.model.MemoryState
 import agent.memory.model.StickyFactsStrategyState
 import agent.memory.model.SummaryStrategyState
-import agent.memory.strategy.MemoryStrategyType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import llm.core.model.ChatMessage
