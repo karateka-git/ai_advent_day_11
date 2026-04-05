@@ -24,6 +24,9 @@ if (-not $OutputFile) {
     $OutputFile = Join-Path $repoRoot "build\smoke-check\$scenarioName-output.txt"
 }
 
+# Сценарии scripted smoke-check должны жить в репозитории, а не в build-артефактах.
+# По умолчанию helper пишет только результаты прогона в build/smoke-check/.
+
 $resolvedOutputFile = [System.IO.Path]::GetFullPath($OutputFile)
 $outputDir = Split-Path -Parent $resolvedOutputFile
 if (-not (Test-Path -LiteralPath $outputDir)) {
@@ -58,10 +61,14 @@ try {
     $null = $process.Start()
 
     $scenarioContent = Get-Content -Encoding UTF8 -LiteralPath $resolvedScenarioFile -Raw
-    $process.StandardInput.Write($scenarioContent)
+    $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+    $stdinBytes = $utf8NoBom.GetBytes($scenarioContent)
+    $process.StandardInput.BaseStream.Write($stdinBytes, 0, $stdinBytes.Length)
     if (-not $scenarioContent.EndsWith("`n")) {
-        $process.StandardInput.WriteLine()
+        $newlineBytes = $utf8NoBom.GetBytes("`n")
+        $process.StandardInput.BaseStream.Write($newlineBytes, 0, $newlineBytes.Length)
     }
+    $process.StandardInput.BaseStream.Flush()
     $process.StandardInput.Close()
 
     $stdout = $process.StandardOutput.ReadToEnd()

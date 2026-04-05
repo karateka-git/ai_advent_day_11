@@ -1,8 +1,9 @@
+import agent.memory.model.MemoryLayer
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import agent.memory.model.MemoryLayer
 import ui.cli.CliCommand
 import ui.cli.CliCommandParser
+import ui.cli.InvalidCliCommandReason
 
 class CliCommandParserTest {
     private val parser = CliCommandParser()
@@ -10,6 +11,11 @@ class CliCommandParserTest {
     @Test
     fun `parses empty input`() {
         assertEquals(CliCommand.Empty, parser.parse(""))
+    }
+
+    @Test
+    fun `parses help command`() {
+        assertEquals(CliCommand.ShowHelp, parser.parse("help"))
     }
 
     @Test
@@ -28,6 +34,34 @@ class CliCommandParserTest {
         assertEquals(CliCommand.ShowMemory(MemoryLayer.SHORT_TERM), parser.parse("memory short"))
         assertEquals(CliCommand.ShowMemory(MemoryLayer.WORKING), parser.parse("memory working"))
         assertEquals(CliCommand.ShowMemory(MemoryLayer.LONG_TERM), parser.parse("memory long"))
+        assertEquals(CliCommand.UserPrompt("memory short raw"), parser.parse("memory short raw"))
+        assertEquals(CliCommand.ShowPendingMemory, parser.parse("memory pending"))
+        assertEquals(CliCommand.ShowPendingMemoryCommands, parser.parse("memory pending info"))
+        assertEquals(CliCommand.ApprovePendingMemory(emptyList()), parser.parse("memory approve"))
+        assertEquals(CliCommand.RejectPendingMemory(listOf("p1", "p2")), parser.parse("memory reject p1 p2"))
+        assertEquals(
+            CliCommand.EditPendingMemory("p3", "text", "Срок — две недели"),
+            parser.parse("memory edit p3 text Срок — две недели")
+        )
+    }
+
+    @Test
+    fun `intercepts incomplete memory edit command`() {
+        val expected = CliCommand.InvalidCommand(
+            InvalidCliCommandReason.Usage("memory edit <id> text|layer|category <значение>")
+        )
+
+        assertEquals(expected, parser.parse("memory edit"))
+        assertEquals(expected, parser.parse("memory edit p1"))
+        assertEquals(expected, parser.parse(" memory   edit   p1 "))
+    }
+
+    @Test
+    fun `intercepts memory edit with unsupported field`() {
+        assertEquals(
+            CliCommand.InvalidCommand(InvalidCliCommandReason.PendingEditUnsupportedField()),
+            parser.parse("memory edit p1 title Новый текст")
+        )
     }
 
     @Test
@@ -53,10 +87,36 @@ class CliCommandParserTest {
     }
 
     @Test
+    fun `intercepts incomplete branch commands`() {
+        assertEquals(
+            CliCommand.InvalidCommand(
+                InvalidCliCommandReason.Usage("branch create <name> или branch use <name>")
+            ),
+            parser.parse("branch")
+        )
+        assertEquals(
+            CliCommand.InvalidCommand(InvalidCliCommandReason.Usage("branch create <name>")),
+            parser.parse("branch create")
+        )
+        assertEquals(
+            CliCommand.InvalidCommand(InvalidCliCommandReason.Usage("branch use <name>")),
+            parser.parse("branch use")
+        )
+    }
+
+    @Test
     fun `parses use command`() {
         assertEquals(
             CliCommand.SwitchModel("huggingface"),
             parser.parse("use huggingface")
+        )
+    }
+
+    @Test
+    fun `intercepts incomplete use command`() {
+        assertEquals(
+            CliCommand.InvalidCommand(InvalidCliCommandReason.Usage("use <model_id>")),
+            parser.parse("use")
         )
     }
 

@@ -3,6 +3,9 @@ package agent.core
 import agent.capability.AgentCapability
 import agent.format.ResponseFormat
 import agent.memory.model.MemorySnapshot
+import agent.memory.model.PendingMemoryState
+import agent.memory.model.PendingMemoryActionResult
+import agent.memory.model.PendingMemoryEdit
 import java.nio.file.Path
 
 /**
@@ -48,6 +51,26 @@ interface Agent<T> {
      * @return текущее состояние памяти вместе с активной short-term стратегией.
      */
     fun inspectMemory(): MemorySnapshot
+
+    /**
+     * Возвращает текущие pending-кандидаты на сохранение в durable memory.
+     */
+    fun inspectPendingMemory(): PendingMemoryState
+
+    /**
+     * Подтверждает pending-кандидаты по идентификаторам или всю очередь целиком.
+     */
+    fun approvePendingMemory(candidateIds: List<String> = emptyList()): PendingMemoryActionResult
+
+    /**
+     * Отклоняет pending-кандидаты по идентификаторам или всю очередь целиком.
+     */
+    fun rejectPendingMemory(candidateIds: List<String> = emptyList()): PendingMemoryActionResult
+
+    /**
+     * Редактирует pending-кандидат перед подтверждением.
+     */
+    fun editPendingMemory(candidateId: String, edit: PendingMemoryEdit): PendingMemoryState
 
     /**
      * Возвращает дополнительную capability текущего агента, если она поддерживается.

@@ -2,6 +2,9 @@ package agent.memory.core
 
 import agent.capability.AgentCapability
 import agent.core.AgentTokenStats
+import agent.memory.model.PendingMemoryState
+import agent.memory.model.PendingMemoryActionResult
+import agent.memory.model.PendingMemoryEdit
 import agent.memory.model.MemorySnapshot
 import agent.memory.model.MemoryState
 import java.nio.file.Path
@@ -67,6 +70,36 @@ interface MemoryManager {
      * @return snapshot памяти для UI и отладочного вывода.
      */
     fun memorySnapshot(): MemorySnapshot
+
+    /**
+     * Возвращает текущую очередь кандидатов, ожидающих подтверждения пользователя.
+     */
+    fun pendingMemory(): PendingMemoryState
+
+    /**
+     * Подтверждает часть pending-кандидатов или всю очередь целиком.
+     *
+     * @param candidateIds идентификаторы кандидатов; пустой список означает подтверждение всей очереди.
+     * @return результат действия и обновлённая очередь pending-кандидатов.
+     */
+    fun approvePendingMemory(candidateIds: List<String> = emptyList()): PendingMemoryActionResult
+
+    /**
+     * Отклоняет часть pending-кандидатов или всю очередь целиком.
+     *
+     * @param candidateIds идентификаторы кандидатов; пустой список означает отклонение всей очереди.
+     * @return результат действия и обновлённая очередь pending-кандидатов.
+     */
+    fun rejectPendingMemory(candidateIds: List<String> = emptyList()): PendingMemoryActionResult
+
+    /**
+     * Редактирует один pending-кандидат перед подтверждением.
+     *
+     * @param candidateId идентификатор изменяемого кандидата.
+     * @param edit описание изменения.
+     * @return обновлённая очередь pending-кандидатов и количество затронутых кандидатов.
+     */
+    fun editPendingMemory(candidateId: String, edit: PendingMemoryEdit): PendingMemoryState
 
     /**
      * Возвращает capability активной стратегии памяти, если она поддерживается.

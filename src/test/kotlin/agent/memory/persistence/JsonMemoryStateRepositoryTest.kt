@@ -22,7 +22,11 @@ class JsonMemoryStateRepositoryTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(ChatRole.SYSTEM, "system"),
+                    ChatMessage(ChatRole.USER, "Привет")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(ChatRole.SYSTEM, "system"),
                     ChatMessage(ChatRole.USER, "Привет")
                 )
@@ -48,7 +52,11 @@ class JsonMemoryStateRepositoryTest {
             """
             {
               "shortTerm": {
-                "messages": [
+                "rawMessages": [
+                  { "role": "system", "content": "system" },
+                  { "role": "user", "content": "Привет" }
+                ],
+                "derivedMessages": [
                   { "role": "system", "content": "system" },
                   { "role": "user", "content": "Привет" }
                 ]
@@ -75,7 +83,11 @@ class JsonMemoryStateRepositoryTest {
         assertEquals(
             MemoryState(
                 shortTerm = ShortTermMemory(
-                    messages = listOf(
+                    rawMessages = listOf(
+                        ChatMessage(ChatRole.SYSTEM, "system"),
+                        ChatMessage(ChatRole.USER, "Привет")
+                    ),
+                    derivedMessages = listOf(
                         ChatMessage(ChatRole.SYSTEM, "system"),
                         ChatMessage(ChatRole.USER, "Привет")
                     )

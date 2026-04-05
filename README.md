@@ -245,6 +245,158 @@ sequenceDiagram
     C->>R: "AppEvent.AssistantResponseAvailable"
 ```
 
+## Где вступает в игру MemoryCandidateValidator
+
+Да. Крупно цепочка сейчас такая.
+
+## 1. Пользователь вводит сообщение
+CLI получает строку и решает:
+- это встроенная команда (`memory`, `help`, `use`, и т.д.)
+- или обычное сообщение для модели
+
+Если это обычное сообщение, дальше идём в агент.
+
+## 2. Сначала считается локальный preview токенов
+Перед основным запросом система делает локальную оценку:
+- текущего сообщения
+- истории
+- полного запроса
+
+На этом этапе `MemoryCandidateValidator` ещё не участвует.
+
+## 3. Агент передаёт сообщение в memory manager
+Дальше вызывается логика вроде:
+- `appendUserMessage(...)` в `DefaultMemoryManager.kt`
+
+Именно здесь начинается работа памяти.
+
+## 4. Сообщение добавляется в short-term raw log
+Сначала сообщение просто попадает в:
+- `shortTerm.rawMessages`
+
+То есть short-term сохраняется раньше, чем allocator и validator вообще что-то решают.
+
+Это важно:
+- `MemoryCandidateValidator` не влияет на попадание сообщения в short-term
+- он влияет только на кандидатов для `working` и `long-term`
+
+## 5. Запускается allocator
+Потом `DefaultMemoryManager` вызывает:
+- `processCandidatesIfAllowed(...)`
+
+Внутри:
+- `memoryLayerWritePolicy.shouldAllocate(message)`
+- `memoryLayerAllocator.extractCandidates(...)`
+
+Здесь allocator пытается извлечь из нового сообщения черновики заметок:
+- в `working`
+- в `long-term`
+
+Например:
+- `goal`
+- `deadline`
+- `communication_style`
+
+На этом этапе у нас ещё не настоящая память, а только кандидаты.
+
+## 6. Вот здесь вступает `MemoryCandidateValidator`
+Сразу после allocator’а:
+- `candidateValidator.validate(message, extractedCandidates)`
+
+То есть порядок такой:
+1. allocator что-то извлёк
+2. validator фильтрует извлечённое
+3. только потом идём дальше
+
+Если validator кандидат отбросил:
+- пользователь его уже не увидит
+- в `pending` он не попадёт
+- в `working/long-term` тоже не попадёт
+
+Это и есть причина, почему его роль сейчас такая чувствительная.
+
+## 7. Потом confirmation policy решает судьбу валидных кандидатов
+После validator:
+- `confirmationPolicy.classify(...)`
+
+Она делит кандидатов на:
+- `autoApply`
+- `pending`
+
+Например:
+- часть `working` может примениться сразу
+- весь `long-term` обычно уходит в `pending`
+
+## 8. Auto-apply сразу попадает в durable memory
+Через `candidateApplier.apply(...)`:
+- обновляется `working`
+- обновляется `long-term`
+
+## 9. Pending-кандидаты складываются в очередь
+Если кандидат не авто-сохраняется:
+- он попадает в `state.pending`
+
+И потом пользователь уже видит:
+- `Есть кандидаты на сохранение в память. Посмотри их командой memory pending.`
+
+## 10. Потом short-term стратегия пересчитывает derived view
+После memory-layer части вызывается:
+- `refreshState(...)`
+- а внутри `memoryStrategy.refreshState(...)`
+
+Это уже про short-term стратегию:
+- `no_compression`
+- `sliding_window`
+- `summary`
+- `sticky_facts`
+- `branching`
+
+`MemoryCandidateValidator` здесь уже не участвует.
+
+## 11. После этого собирается prompt и идёт запрос в модель
+Когда память обновлена:
+- строится effective conversation
+- вызывается основная модель
+- получаем ответ ассистента
+
+## 12. Ответ показывается пользователю
+CLI выводит:
+- блок ответа модели
+- служебные блоки
+- и при наличии pending-подсказку
+
+---
+
+# Самое важное про `MemoryCandidateValidator`
+
+Он срабатывает:
+- **после allocator**
+- **до pending**
+- **до auto-save**
+- **до показа кандидатов пользователю**
+
+То есть он стоит вот здесь:
+
+`пользовательское сообщение`
+-> `shortTerm.rawMessages`
+-> `allocator.extractCandidates`
+-> `MemoryCandidateValidator.validate`
+-> `confirmationPolicy.classify`
+-> `autoApply / pending`
+-> `refreshState(short-term strategy)`
+-> `prompt`
+-> `ответ модели`
+
+---
+
+# Почему это важно
+
+Если validator слишком строгий, он не просто “не даёт сохранить мусор”.
+Он может:
+- убрать кандидата ещё до того, как пользователь вообще узнает о нём.
+
+То есть в вашей новой модели с `pending` он действительно стал гораздо сильнее, чем может казаться.
+
 ## Режим сравнения стратегий
 
 Для сравнения стратегий есть отдельный dev-инструмент:

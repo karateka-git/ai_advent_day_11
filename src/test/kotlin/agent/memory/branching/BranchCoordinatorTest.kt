@@ -16,7 +16,12 @@ class BranchCoordinatorTest {
     fun `creates checkpoint and branch then switches to it`() {
         val initialState = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(ChatRole.SYSTEM, "system"),
+                    ChatMessage(ChatRole.USER, "u1"),
+                    ChatMessage(ChatRole.ASSISTANT, "a1")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(ChatRole.SYSTEM, "system"),
                     ChatMessage(ChatRole.USER, "u1"),
                     ChatMessage(ChatRole.ASSISTANT, "a1")
@@ -69,7 +74,7 @@ class BranchCoordinatorTest {
                 ChatMessage(ChatRole.ASSISTANT, "a1"),
                 ChatMessage(ChatRole.USER, "branch-u1")
             ),
-            switchResult.state.shortTerm.messages
+            switchResult.state.shortTerm.rawMessages
         )
     }
 }

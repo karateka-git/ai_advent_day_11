@@ -1,0 +1,16 @@
+use timeweb
+5
+Собираем ТЗ для Telegram-бота.
+Нужен MVP за 2 недели.
+Интеграция только с Google Sheets.
+checkpoint base_tz
+branch create mvp_light
+branch create analytics_first
+branch use mvp_light
+Убираем аналитику из первой версии.
+Сформулируй краткое ТЗ для этой ветки.
+branch use analytics_first
+Добавляем аналитику заявок уже в MVP.
+Сформулируй краткое ТЗ для этой ветки.
+branches
+exit

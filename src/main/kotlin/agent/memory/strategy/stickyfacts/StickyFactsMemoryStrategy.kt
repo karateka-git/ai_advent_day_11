@@ -4,6 +4,7 @@ import agent.memory.core.MemoryStateRefreshMode
 import agent.memory.core.MemoryStrategy
 import agent.memory.strategy.MemoryStrategyType
 import agent.memory.model.MemoryState
+import agent.memory.model.ShortTermMemory
 import agent.memory.model.StickyFactsStrategyState
 import llm.core.model.ChatMessage
 import llm.core.model.ChatRole
@@ -31,18 +32,7 @@ class StickyFactsMemoryStrategy(
     override val type: MemoryStrategyType = MemoryStrategyType.STICKY_FACTS
 
     override fun effectiveContext(state: MemoryState): List<ChatMessage> {
-        val systemMessages = state.shortTerm.messages.filter { it.role == ChatRole.SYSTEM }
-        val dialogMessages = state.shortTerm.messages.filter { it.role != ChatRole.SYSTEM }
-        val factsState = stickyFactsState(state)
-
-        return buildList {
-            addAll(systemMessages)
-            factsState?.facts
-                ?.takeIf { it.isNotEmpty() }
-                ?.let(::toFactsMessage)
-                ?.let(::add)
-            addAll(dialogMessages.takeLast(recentMessagesCount))
-        }
+        return state.shortTerm.derivedMessages.toList()
     }
 
     override fun refreshState(
@@ -50,29 +40,31 @@ class StickyFactsMemoryStrategy(
         mode: MemoryStateRefreshMode
     ): MemoryState {
         if (mode == MemoryStateRefreshMode.PREVIEW) {
-            return state
+            return rebuildDerivedMessages(state)
         }
 
-        val lastMessage = state.shortTerm.messages.lastOrNull()
+        val lastMessage = state.shortTerm.rawMessages.lastOrNull()
         if (lastMessage?.role != ChatRole.USER) {
-            return state
+            return rebuildDerivedMessages(state)
         }
 
         val factsState = stickyFactsState(state)
         val existingFacts = factsState?.facts.orEmpty()
-        val dialogMessages = state.shortTerm.messages.filter { it.role != ChatRole.SYSTEM }
+        val dialogMessages = state.shortTerm.rawMessages.filter { it.role != ChatRole.SYSTEM }
         val coveredMessagesCount = factsState?.coveredMessagesCount ?: 0
         val newMessagesBatch = dialogMessages.drop(coveredMessagesCount)
         val newUserMessagesCount = newMessagesBatch.count { it.role == ChatRole.USER }
 
         if (newUserMessagesCount < factsBatchSize) {
-            return state.copy(
+            return rebuildDerivedMessages(
+                state.copy(
                 shortTerm = state.shortTerm.copy(
                     strategyState = StickyFactsStrategyState(
                         facts = existingFacts,
                         coveredMessagesCount = coveredMessagesCount
                     )
                 )
+            )
             )
         }
 
@@ -81,13 +73,15 @@ class StickyFactsMemoryStrategy(
             newMessagesBatch = newMessagesBatch
         )
 
-        return state.copy(
+        return rebuildDerivedMessages(
+            state.copy(
             shortTerm = state.shortTerm.copy(
                 strategyState = StickyFactsStrategyState(
                     facts = updatedFacts,
                     coveredMessagesCount = dialogMessages.size
                 )
             )
+        )
         )
     }
 
@@ -105,6 +99,30 @@ class StickyFactsMemoryStrategy(
                 }
             }.trimEnd()
         )
+
+    private fun rebuildDerivedMessages(state: MemoryState): MemoryState {
+        val rawMessages = state.shortTerm.rawMessages
+        val systemMessages = rawMessages.filter { it.role == ChatRole.SYSTEM }
+        val dialogMessages = rawMessages.filter { it.role != ChatRole.SYSTEM }
+        val factsState = stickyFactsState(state)
+
+        val derivedMessages = buildList {
+            addAll(systemMessages)
+            factsState?.facts
+                ?.takeIf { it.isNotEmpty() }
+                ?.let(::toFactsMessage)
+                ?.let(::add)
+            addAll(dialogMessages.takeLast(recentMessagesCount))
+        }
+
+        return state.copy(
+            shortTerm = ShortTermMemory(
+                rawMessages = rawMessages,
+                derivedMessages = derivedMessages,
+                strategyState = state.shortTerm.strategyState
+            )
+        )
+    }
 }
 
 

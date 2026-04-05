@@ -1,0 +1,11 @@
+use huggingface
+1
+Отвечай кратко и на русском.
+Цель проекта — Telegram-бот для записи на пробный урок.
+Срок — две недели, интеграция только с Google Sheets.
+memory short
+memory long
+memory working
+memory pending
+Напомни мой стиль общения, цель и ограничения проекта.
+exit

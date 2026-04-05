@@ -4,6 +4,7 @@ import agent.memory.core.MemoryStateRefreshMode
 import agent.memory.core.MemoryStrategy
 import agent.memory.model.ConversationSummary
 import agent.memory.model.MemoryState
+import agent.memory.model.ShortTermMemory
 import agent.memory.model.SummaryStrategyState
 import agent.memory.strategy.MemoryStrategyType
 import llm.core.model.ChatMessage
@@ -31,23 +32,8 @@ class SummaryCompressionMemoryStrategy(
 
     override val type: MemoryStrategyType = MemoryStrategyType.SUMMARY_COMPRESSION
 
-    override fun effectiveContext(state: MemoryState): List<ChatMessage> {
-        val systemMessages = state.shortTerm.messages.filter { it.role == ChatRole.SYSTEM }
-        val dialogMessages = state.shortTerm.messages.filter { it.role != ChatRole.SYSTEM }
-        val coveredMessagesCount = coveredMessagesCount(state)
-        val uncompressedTail = dialogMessages.drop(coveredMessagesCount)
-
-        val summary = summary(state)
-        if (summary == null && coveredMessagesCount == 0) {
-            return state.shortTerm.messages.toList()
-        }
-
-        return buildList {
-            addAll(systemMessages)
-            summary?.let(::toSummaryMessage)?.let(::add)
-            addAll(uncompressedTail)
-        }
-    }
+    override fun effectiveContext(state: MemoryState): List<ChatMessage> =
+        state.shortTerm.derivedMessages.toList()
 
     override fun refreshState(
         state: MemoryState,
@@ -55,19 +41,19 @@ class SummaryCompressionMemoryStrategy(
     ): MemoryState {
         if (mode == MemoryStateRefreshMode.PREVIEW) {
             // Preview token estimation must stay local and must not trigger summarizer side effects.
-            return state
+            return rebuildDerivedMessages(state)
         }
 
         val preparedState = prepareStateForSummary(state)
         var currentState = preparedState
 
         while (true) {
-            val dialogMessages = currentState.shortTerm.messages.filter { it.role != ChatRole.SYSTEM }
+            val dialogMessages = currentState.shortTerm.rawMessages.filter { it.role != ChatRole.SYSTEM }
             val uncompressedMessages = dialogMessages.drop(coveredMessagesCount(currentState))
             val messagesEligibleForCompression = uncompressedMessages.dropLastSafe(recentMessagesCount)
 
             if (messagesEligibleForCompression.size < summaryBatchSize) {
-                return currentState
+                return rebuildDerivedMessages(currentState)
             }
 
             val nextBatch = messagesEligibleForCompression.take(summaryBatchSize)
@@ -97,7 +83,7 @@ class SummaryCompressionMemoryStrategy(
             return state
         }
 
-        val dialogMessages = state.shortTerm.messages.filter { it.role != ChatRole.SYSTEM }
+        val dialogMessages = state.shortTerm.rawMessages.filter { it.role != ChatRole.SYSTEM }
         val activationWindowSize = recentMessagesCount + summaryBatchSize
         val coveredMessagesCount = (dialogMessages.size - activationWindowSize).coerceAtLeast(0)
 
@@ -106,6 +92,33 @@ class SummaryCompressionMemoryStrategy(
                 strategyState = SummaryStrategyState(
                     coveredMessagesCount = coveredMessagesCount
                 )
+            )
+        )
+    }
+
+    private fun rebuildDerivedMessages(state: MemoryState): MemoryState {
+        val rawMessages = state.shortTerm.rawMessages
+        val systemMessages = rawMessages.filter { it.role == ChatRole.SYSTEM }
+        val dialogMessages = rawMessages.filter { it.role != ChatRole.SYSTEM }
+        val coveredMessagesCount = coveredMessagesCount(state)
+        val uncompressedTail = dialogMessages.drop(coveredMessagesCount)
+        val summary = summary(state)
+        val derivedMessages =
+            if (summary == null && coveredMessagesCount == 0) {
+                rawMessages
+            } else {
+                buildList {
+                    addAll(systemMessages)
+                    summary?.let(::toSummaryMessage)?.let(::add)
+                    addAll(uncompressedTail)
+                }
+            }
+
+        return state.copy(
+            shortTerm = ShortTermMemory(
+                rawMessages = rawMessages,
+                derivedMessages = derivedMessages,
+                strategyState = state.shortTerm.strategyState
             )
         )
     }

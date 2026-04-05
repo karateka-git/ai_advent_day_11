@@ -22,7 +22,12 @@ class NoCompressionMemoryStrategyTest {
         assertEquals(
             messages,
             strategy.effectiveContext(
-                MemoryState(shortTerm = ShortTermMemory(messages = messages))
+                MemoryState(
+                    shortTerm = ShortTermMemory(
+                        rawMessages = messages,
+                        derivedMessages = messages
+                    )
+                )
             )
         )
     }

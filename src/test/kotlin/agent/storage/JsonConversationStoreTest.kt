@@ -48,13 +48,15 @@ class JsonConversationStoreTest {
     fun `saveState and loadState preserve short-term messages`() {
         val tempDir = Files.createTempDirectory("conversation-store-test")
         val store = JsonConversationStore(tempDir.resolve("conversation.json"))
+        val messages = listOf(
+            StoredMessage(role = "system", content = "Ты помощник."),
+            StoredMessage(role = "user", content = "Привет"),
+            StoredMessage(role = "assistant", content = "Здравствуйте")
+        )
         val state = ConversationMemoryState(
             shortTerm = StoredShortTermMemory(
-                messages = listOf(
-                    StoredMessage(role = "system", content = "Ты помощник."),
-                    StoredMessage(role = "user", content = "Привет"),
-                    StoredMessage(role = "assistant", content = "Здравствуйте")
-                )
+                rawMessages = messages,
+                derivedMessages = messages
             )
         )
 
@@ -67,12 +69,14 @@ class JsonConversationStoreTest {
     fun `saveState and loadState preserve layered memory`() {
         val tempDir = Files.createTempDirectory("conversation-store-test")
         val store = JsonConversationStore(tempDir.resolve("conversation.json"))
+        val messages = listOf(
+            StoredMessage(role = "system", content = "Ты помощник."),
+            StoredMessage(role = "user", content = "Привет")
+        )
         val state = ConversationMemoryState(
             shortTerm = StoredShortTermMemory(
-                messages = listOf(
-                    StoredMessage(role = "system", content = "Ты помощник."),
-                    StoredMessage(role = "user", content = "Привет")
-                ),
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = StoredSummaryStrategyState(
                     summary = StoredSummary(
                         content = "Пользователь поздоровался.",

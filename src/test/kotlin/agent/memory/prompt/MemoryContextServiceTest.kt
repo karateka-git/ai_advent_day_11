@@ -25,7 +25,11 @@ class MemoryContextServiceTest {
     fun `builds effective conversation through strategy and layered assembler`() {
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(ChatRole.SYSTEM, "ignored"),
+                    ChatMessage(ChatRole.USER, "Привет")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(ChatRole.SYSTEM, "ignored"),
                     ChatMessage(ChatRole.USER, "Привет")
                 )
@@ -57,7 +61,11 @@ class MemoryContextServiceTest {
     fun `counts prompt tokens through assembled context`() {
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(ChatRole.SYSTEM, "ignored"),
+                    ChatMessage(ChatRole.USER, "Привет")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(ChatRole.SYSTEM, "ignored"),
                     ChatMessage(ChatRole.USER, "Привет")
                 )
@@ -82,7 +90,7 @@ class MemoryContextServiceTest {
 private class EchoShortTermStrategy : MemoryStrategy {
     override val type: MemoryStrategyType = MemoryStrategyType.NO_COMPRESSION
 
-    override fun effectiveContext(state: MemoryState): List<ChatMessage> = state.shortTerm.messages
+    override fun effectiveContext(state: MemoryState): List<ChatMessage> = state.shortTerm.derivedMessages
 }
 
 private class FakeLanguageModel(

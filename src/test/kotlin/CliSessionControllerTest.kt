@@ -3,23 +3,19 @@ import agent.core.Agent
 import agent.core.AgentInfo
 import agent.core.AgentResponse
 import agent.core.AgentTokenStats
-import agent.core.BranchCheckpointInfo
-import agent.core.BranchInfo
-import agent.core.BranchingStatus
 import agent.format.ResponseFormat
 import agent.format.TextResponseFormat
 import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.NoOpAgentLifecycleListener
-import agent.memory.model.LongTermMemory
 import agent.memory.model.MemoryLayer
-import agent.memory.model.MemoryNote
 import agent.memory.model.MemorySnapshot
 import agent.memory.model.MemoryState
-import agent.memory.model.ShortTermMemory
-import agent.memory.model.WorkingMemory
+import agent.memory.model.PendingMemoryActionResult
+import agent.memory.model.PendingMemoryCandidate
+import agent.memory.model.PendingMemoryEdit
+import agent.memory.model.PendingMemoryState
 import agent.memory.strategy.MemoryStrategyOption
 import agent.memory.strategy.MemoryStrategyType
-import agent.memory.strategy.branching.BranchingCapability
 import app.output.AppEvent
 import app.output.AppEventSink
 import java.net.http.HttpClient
@@ -27,73 +23,40 @@ import java.nio.file.Path
 import java.util.Properties
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertSame
 import llm.core.LanguageModel
 import llm.core.model.ChatMessage
+import llm.core.model.ChatRole
 import llm.core.model.LanguageModelInfo
-import llm.core.model.LanguageModelOption
 import llm.core.model.LanguageModelResponse
 import ui.cli.CliSessionController
 import ui.cli.CliSessionControllerResult
 import ui.cli.CliSessionState
+import ui.cli.GeneralCliCatalog
+import ui.cli.PendingMemoryCliCatalog
 
 class CliSessionControllerTest {
     private val config = Properties()
     private val httpClient = HttpClient.newHttpClient()
     private val lifecycleListener: AgentLifecycleListener = NoOpAgentLifecycleListener
     private val strategyOption = MemoryStrategyOption(
-        type = MemoryStrategyType.SUMMARY_COMPRESSION,
-        displayName = "Сжатие через summary",
+        type = MemoryStrategyType.NO_COMPRESSION,
+        displayName = "Без сжатия",
         description = "Тестовая стратегия."
     )
 
     @Test
-    fun `clears context for clear command`() {
-        val agent = FakeAgent(model = "initial-model")
+    fun `shows general help`() {
         val sink = RecordingAppEventSink()
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(agent = agent)
-        )
+        val controller = createController(sink = sink)
 
-        val result = controller.handle("clear")
-
-        assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals(1, agent.clearCalls)
-        assertEquals(listOf<AppEvent>(AppEvent.ContextCleared), sink.events)
-    }
-
-    @Test
-    fun `shows available models using current session model id`() {
-        val sink = RecordingAppEventSink()
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(modelId = "timeweb"),
-            availableModelsProvider = {
-                listOf(
-                    LanguageModelOption(
-                        id = "timeweb",
-                        displayName = "Timeweb",
-                        isConfigured = true
-                    )
-                )
-            }
-        )
-
-        val result = controller.handle("models")
+        val result = controller.handle("help")
 
         assertEquals(CliSessionControllerResult.Continue, result)
         assertEquals(
             listOf<AppEvent>(
-                AppEvent.ModelsAvailable(
-                    options = listOf(
-                        LanguageModelOption(
-                            id = "timeweb",
-                            displayName = "Timeweb",
-                            isConfigured = true
-                        )
-                    ),
-                    currentModelId = "timeweb"
+                AppEvent.CommandsAvailable(
+                    title = "Доступные команды",
+                    commands = GeneralCliCatalog.helpCommands
                 )
             ),
             sink.events
@@ -120,114 +83,17 @@ class CliSessionControllerTest {
     }
 
     @Test
-    fun `switches model asks for memory strategy and updates session state`() {
-        val sink = RecordingAppEventSink()
-        val createdModel = FakeLanguageModel(
-            name = "HuggingFaceLanguageModel",
-            model = "hf-model"
-        )
-        val recreatedAgent = FakeAgent(model = "hf-model")
-        val slidingWindowOption = MemoryStrategyOption(
-            type = MemoryStrategyType.SLIDING_WINDOW,
-            displayName = "Скользящее окно",
-            description = "Тестовая стратегия."
-        )
-        var warmUpCalls = 0
-        var selectionCalls = 0
-        val controller = createController(
-            sink = sink,
-            createLanguageModel = { modelId, _, _ ->
-                assertEquals("huggingface", modelId)
-                createdModel
-            },
-            createAgent = { languageModel, _, strategyId ->
-                assertSame(createdModel, languageModel)
-                assertEquals(slidingWindowOption.type, strategyId)
-                recreatedAgent
-            },
-            selectMemoryStrategy = {
-                selectionCalls++
-                slidingWindowOption
-            },
-            warmUpLanguageModel = { languageModel, _ ->
-                assertSame(createdModel, languageModel)
-                warmUpCalls++
-            }
-        )
-
-        val result = controller.handle("use huggingface")
-
-        assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals("huggingface", controller.state.modelId)
-        assertSame(createdModel, controller.state.languageModel)
-        assertSame(recreatedAgent, controller.state.agent)
-        assertEquals(slidingWindowOption, controller.state.memoryStrategyOption)
-        assertEquals(1, selectionCalls)
-        assertEquals(1, warmUpCalls)
-        assertEquals(
-            listOf(
-                AppEvent.ModelChanged,
-                AppEvent.AgentInfoAvailable(
-                    info = recreatedAgent.info,
-                    strategy = slidingWindowOption
-                )
-            ),
-            sink.events
-        )
-    }
-
-    @Test
-    fun `returns exit for exit command`() {
+    fun `shows pending candidates through current agent`() {
         val sink = RecordingAppEventSink()
         val controller = createController(sink = sink)
 
-        val result = controller.handle("exit")
-
-        assertEquals(CliSessionControllerResult.ExitRequested, result)
-        assertEquals(listOf<AppEvent>(AppEvent.SessionFinished), sink.events)
-    }
-
-    @Test
-    fun `emits model switch failure for unknown model`() {
-        val sink = RecordingAppEventSink()
-        val controller = createController(
-            sink = sink,
-            createLanguageModel = { _, _, _ ->
-                error("Неизвестная модель")
-            }
-        )
-
-        val result = controller.handle("use unknown")
-
-        assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals(
-            listOf<AppEvent>(AppEvent.ModelSwitchFailed("Неизвестная модель")),
-            sink.events
-        )
-    }
-
-    @Test
-    fun `creates checkpoint through current agent`() {
-        val sink = RecordingAppEventSink()
-        val agent = FakeAgent(
-            model = "initial-model",
-            checkpointInfo = BranchCheckpointInfo(
-                name = "checkpoint-1",
-                sourceBranchName = "main"
-            )
-        )
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(agent = agent)
-        )
-
-        val result = controller.handle("checkpoint")
+        val result = controller.handle("memory pending")
 
         assertEquals(CliSessionControllerResult.Continue, result)
         assertEquals(
             listOf<AppEvent>(
-                AppEvent.CheckpointCreated(
-                    BranchCheckpointInfo(name = "checkpoint-1", sourceBranchName = "main")
+                AppEvent.PendingMemoryAvailable(
+                    pending = FakeAgent.pendingMemory()
                 )
             ),
             sink.events
@@ -235,96 +101,34 @@ class CliSessionControllerTest {
     }
 
     @Test
-    fun `shows branch status through current agent`() {
+    fun `shows pending commands help`() {
         val sink = RecordingAppEventSink()
-        val status = BranchingStatus(
-            activeBranchName = "main",
-            latestCheckpointName = "checkpoint-1",
-            branches = listOf(
-                BranchInfo(name = "main", isActive = true),
-                BranchInfo(name = "option-a", sourceCheckpointName = "checkpoint-1")
-            )
-        )
-        val agent = FakeAgent(
-            model = "initial-model",
-            branchingStatus = status
-        )
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(agent = agent)
-        )
+        val controller = createController(sink = sink)
 
-        val result = controller.handle("branches")
+        val result = controller.handle("memory pending info")
 
         assertEquals(CliSessionControllerResult.Continue, result)
         assertEquals(
-            listOf<AppEvent>(AppEvent.BranchStatusAvailable(status)),
+            listOf<AppEvent>(
+                AppEvent.PendingMemoryCommandsAvailable(
+                    commands = PendingMemoryCliCatalog.helpCommands
+                )
+            ),
             sink.events
         )
     }
 
     @Test
-    fun `creates branch through current agent`() {
-        val sink = RecordingAppEventSink()
-        val branchInfo = BranchInfo(
-            name = "option-a",
-            sourceCheckpointName = "checkpoint-1",
-            isActive = false
-        )
-        val agent = FakeAgent(
-            model = "initial-model",
-            createdBranchInfo = branchInfo
-        )
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(agent = agent)
-        )
-
-        val result = controller.handle("branch create option-a")
-
-        assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals(
-            listOf<AppEvent>(AppEvent.BranchCreated(branchInfo)),
-            sink.events
-        )
-    }
-
-    @Test
-    fun `switches branch through current agent`() {
-        val sink = RecordingAppEventSink()
-        val branchInfo = BranchInfo(
-            name = "option-b",
-            sourceCheckpointName = "checkpoint-1",
-            isActive = true
-        )
-        val agent = FakeAgent(
-            model = "initial-model",
-            switchedBranchInfo = branchInfo
-        )
-        val controller = createController(
-            sink = sink,
-            initialState = initialState(agent = agent)
-        )
-
-        val result = controller.handle("branch use option-b")
-
-        assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals(
-            listOf<AppEvent>(AppEvent.BranchSwitched(branchInfo)),
-            sink.events
-        )
-    }
-
-    @Test
-    fun `handles regular prompt through current agent`() {
+    fun `handles regular prompt and emits pending candidates`() {
         val sink = RecordingAppEventSink()
         val agent = FakeAgent(
-            model = "initial-model",
             previewTokenStats = AgentTokenStats(historyTokens = 10),
             response = AgentResponse(
                 content = "Ответ",
                 tokenStats = AgentTokenStats(promptTokensLocal = 15)
-            )
+            ),
+            initialPendingState = PendingMemoryState(),
+            pendingStateAfterAsk = FakeAgent.pendingMemory()
         )
         val controller = createController(
             sink = sink,
@@ -334,15 +138,19 @@ class CliSessionControllerTest {
         val result = controller.handle("Расскажи историю")
 
         assertEquals(CliSessionControllerResult.Continue, result)
-        assertEquals(listOf("Расскажи историю"), agent.previewInputs)
-        assertEquals(listOf("Расскажи историю"), agent.askInputs)
         assertEquals(
-            listOf(
+            listOf<AppEvent>(
                 AppEvent.TokenPreviewAvailable(AgentTokenStats(historyTokens = 10)),
+                AppEvent.ModelRequestStarted,
+                AppEvent.ModelRequestFinished,
                 AppEvent.AssistantResponseAvailable(
-                    role = llm.core.model.ChatRole.ASSISTANT,
+                    role = ChatRole.ASSISTANT,
                     content = "Ответ",
                     tokenStats = AgentTokenStats(promptTokensLocal = 15)
+                ),
+                AppEvent.PendingMemoryAvailable(
+                    pending = FakeAgent.pendingMemory(),
+                    reason = "Есть кандидаты на сохранение в память. Посмотри их командой memory pending."
                 )
             ),
             sink.events
@@ -353,14 +161,11 @@ class CliSessionControllerTest {
         sink: RecordingAppEventSink = RecordingAppEventSink(),
         initialState: CliSessionState = initialState(),
         createLanguageModel: (String, Properties, HttpClient) -> LanguageModel = { _, _, _ ->
-            error("Не должен вызываться в этом тесте.")
+            throw AssertionError("Не должен вызываться в этом тесте.")
         },
-        availableModelsProvider: (Properties) -> List<LanguageModelOption> = { emptyList() },
         createAgent: (LanguageModel, AgentLifecycleListener, MemoryStrategyType) -> Agent<String> = { _, _, _ ->
-            error("Не должен вызываться в этом тесте.")
-        },
-        selectMemoryStrategy: () -> MemoryStrategyOption = { strategyOption },
-        warmUpLanguageModel: (LanguageModel, AgentLifecycleListener) -> Unit = { _, _ -> Unit }
+            throw AssertionError("Не должен вызываться в этом тесте.")
+        }
     ): CliSessionController =
         CliSessionController(
             initialState = initialState,
@@ -369,19 +174,16 @@ class CliSessionControllerTest {
             lifecycleListener = lifecycleListener,
             appEventSink = sink,
             createLanguageModel = createLanguageModel,
-            availableModelsProvider = availableModelsProvider,
+            availableModelsProvider = { emptyList() },
             createAgent = createAgent,
-            selectMemoryStrategy = selectMemoryStrategy,
-            warmUpLanguageModel = warmUpLanguageModel
+            selectMemoryStrategy = { strategyOption },
+            warmUpLanguageModel = { _, _ -> Unit }
         )
 
     private fun initialState(
         modelId: String = "timeweb",
-        languageModel: LanguageModel = FakeLanguageModel(
-            name = "TimewebLanguageModel",
-            model = "initial-model"
-        ),
-        agent: Agent<String> = FakeAgent(model = "initial-model")
+        languageModel: LanguageModel = FakeLanguageModel("initial-model"),
+        agent: Agent<String> = FakeAgent()
     ): CliSessionState =
         CliSessionState(
             modelId = modelId,
@@ -400,105 +202,84 @@ private class RecordingAppEventSink : AppEventSink {
 }
 
 private class FakeAgent(
-    model: String,
     private val previewTokenStats: AgentTokenStats = AgentTokenStats(),
     private val response: AgentResponse<String> = AgentResponse(
         content = "ok",
         tokenStats = AgentTokenStats()
     ),
-    private val checkpointInfo: BranchCheckpointInfo = BranchCheckpointInfo(
-        name = "checkpoint-1",
-        sourceBranchName = "main"
-    ),
-    private val createdBranchInfo: BranchInfo = BranchInfo(
-        name = "option-a",
-        sourceCheckpointName = "checkpoint-1",
-        isActive = false
-    ),
-    private val switchedBranchInfo: BranchInfo = BranchInfo(
-        name = "option-a",
-        sourceCheckpointName = "checkpoint-1",
-        isActive = true
-    ),
-    private val branchingStatus: BranchingStatus = BranchingStatus(
-        activeBranchName = "main",
-        latestCheckpointName = null,
-        branches = listOf(BranchInfo(name = "main", isActive = true))
-    )
+    initialPendingState: PendingMemoryState = pendingMemory(),
+    private val pendingStateAfterAsk: PendingMemoryState = initialPendingState
 ) : Agent<String> {
+    private var currentPendingState: PendingMemoryState = initialPendingState
+
     override val info: AgentInfo = AgentInfo(
         name = "TestAgent",
         description = "Тестовый агент",
-        model = model
+        model = "test-model"
     )
     override val responseFormat: ResponseFormat<String> = TextResponseFormat
 
-    var clearCalls: Int = 0
-    val previewInputs = mutableListOf<String>()
-    val askInputs = mutableListOf<String>()
-
-    override fun previewTokenStats(userPrompt: String): AgentTokenStats {
-        previewInputs += userPrompt
-        return previewTokenStats
-    }
+    override fun previewTokenStats(userPrompt: String): AgentTokenStats = previewTokenStats
 
     override fun ask(userPrompt: String): AgentResponse<String> {
-        askInputs += userPrompt
+        currentPendingState = pendingStateAfterAsk
         return response
     }
 
-    override fun clearContext() {
-        clearCalls++
-    }
+    override fun clearContext() = Unit
 
-    override fun replaceContextFromFile(sourcePath: Path) {
-        error("Не должен вызываться в этом тесте.")
-    }
+    override fun replaceContextFromFile(sourcePath: Path) = Unit
 
     override fun inspectMemory(): MemorySnapshot = memorySnapshot()
 
-    override fun <TCapability : AgentCapability> capability(capabilityType: Class<TCapability>): TCapability? {
-        val branchingCapability = object : BranchingCapability {
-            override fun createCheckpoint(name: String?): BranchCheckpointInfo = checkpointInfo
+    override fun inspectPendingMemory(): PendingMemoryState = currentPendingState
 
-            override fun createBranch(name: String): BranchInfo = createdBranchInfo
+    override fun approvePendingMemory(candidateIds: List<String>): PendingMemoryActionResult =
+        PendingMemoryActionResult(
+            affectedIds = listOf("p1"),
+            pendingState = PendingMemoryState()
+        )
 
-            override fun switchBranch(name: String): BranchInfo = switchedBranchInfo
+    override fun rejectPendingMemory(candidateIds: List<String>): PendingMemoryActionResult =
+        PendingMemoryActionResult(
+            affectedIds = listOf("p1"),
+            pendingState = PendingMemoryState()
+        )
 
-            override fun branchStatus(): BranchingStatus = branchingStatus
-        }
+    override fun editPendingMemory(candidateId: String, edit: PendingMemoryEdit): PendingMemoryState =
+        currentPendingState
 
-        return capabilityType
-            .takeIf { it.isInstance(branchingCapability) }
-            ?.cast(branchingCapability)
-    }
+    override fun <TCapability : AgentCapability> capability(capabilityType: Class<TCapability>): TCapability? = null
 
     companion object {
         fun memorySnapshot(): MemorySnapshot =
             MemorySnapshot(
-                state = MemoryState(
-                    shortTerm = ShortTermMemory(),
-                    working = WorkingMemory(),
-                    longTerm = LongTermMemory(
-                        notes = listOf(
-                            MemoryNote(
-                                category = "communication_style",
-                                content = "Отвечай кратко"
-                            )
-                        )
+                state = MemoryState(),
+                shortTermStrategyType = MemoryStrategyType.NO_COMPRESSION
+            )
+
+        fun pendingMemory(): PendingMemoryState =
+            PendingMemoryState(
+                candidates = listOf(
+                    PendingMemoryCandidate(
+                        id = "p1",
+                        targetLayer = MemoryLayer.LONG_TERM,
+                        category = "communication_style",
+                        content = "Отвечай кратко",
+                        sourceRole = ChatRole.USER,
+                        sourceMessage = "Отвечай кратко"
                     )
                 ),
-                shortTermStrategyType = MemoryStrategyType.SUMMARY_COMPRESSION
+                nextId = 2
             )
     }
 }
 
 private class FakeLanguageModel(
-    name: String,
     model: String
 ) : LanguageModel {
     override val info = LanguageModelInfo(
-        name = name,
+        name = "FakeLanguageModel",
         model = model
     )
 

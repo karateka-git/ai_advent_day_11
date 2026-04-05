@@ -8,18 +8,35 @@ import agent.core.BranchingStatus
 import agent.lifecycle.ContextCompressionStats
 import agent.memory.model.MemoryLayer
 import agent.memory.model.MemorySnapshot
+import agent.memory.model.PendingMemoryState
 import agent.memory.strategy.MemoryStrategyOption
 import llm.core.model.ChatRole
 import llm.core.model.LanguageModelOption
+
+/**
+ * Описание одной пользовательской CLI-команды для справки и help-экранов.
+ *
+ * @property command полная форма команды.
+ * @property description короткое пояснение назначения команды.
+ */
+data class HelpCommandDescriptor(
+    val command: String,
+    val description: String
+)
 
 /**
  * Типизированные события application-слоя, которые описывают, что должно быть показано
  * пользователю, не привязывая приложение к конкретному UI.
  */
 sealed interface AppEvent {
-    data class SessionStarted(
-        val modelsCommand: String,
-        val useCommand: String
+    data object SessionStarted : AppEvent
+
+    /**
+     * Список доступных CLI-команд, который UI может показать отдельным help-блоком.
+     */
+    data class CommandsAvailable(
+        val title: String,
+        val commands: List<HelpCommandDescriptor>
     ) : AppEvent
 
     data class MemoryStrategySelectionRequested(
@@ -46,9 +63,46 @@ sealed interface AppEvent {
         val currentModelId: String
     ) : AppEvent
 
+    /**
+     * Снимок layered memory для пользовательской инспекции.
+     *
+     * @property snapshot текущее состояние памяти вместе с активной стратегией.
+     * @property selectedLayer конкретный слой для просмотра; `null` означает полный вывод.
+     */
     data class MemoryStateAvailable(
         val snapshot: MemorySnapshot,
         val selectedLayer: MemoryLayer?
+    ) : AppEvent
+
+    /**
+     * Текущая очередь pending-кандидатов.
+     *
+     * @property pending кандидаты, ожидающие решения пользователя.
+     * @property reason необязательное пояснение, почему этот список был показан.
+     */
+    data class PendingMemoryAvailable(
+        val pending: PendingMemoryState,
+        val reason: String? = null
+    ) : AppEvent
+
+    /**
+     * Результат команды, которая изменила pending-кандидаты.
+     *
+     * @property message человекочитаемый итог действия.
+     * @property pending обновлённая очередь pending-кандидатов.
+     */
+    data class PendingMemoryActionCompleted(
+        val message: String,
+        val pending: PendingMemoryState
+    ) : AppEvent
+
+    /**
+     * Справка по командам работы с pending-памятью.
+     *
+     * @property commands доступные команды и их пояснения.
+     */
+    data class PendingMemoryCommandsAvailable(
+        val commands: List<HelpCommandDescriptor>
     ) : AppEvent
 
     data class CheckpointCreated(

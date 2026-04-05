@@ -12,9 +12,14 @@ import agent.lifecycle.NoOpAgentLifecycleListener
 import agent.memory.core.DefaultMemoryManager
 import agent.memory.core.MemoryManager
 import agent.memory.core.MemoryStrategy
+import agent.memory.layer.MemoryLayerAllocator
+import agent.memory.layer.RuleBasedMemoryLayerAllocator
 import agent.memory.model.MemorySnapshot
-import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
+import agent.memory.model.PendingMemoryActionResult
+import agent.memory.model.PendingMemoryEdit
+import agent.memory.model.PendingMemoryState
 import agent.memory.strategy.summary.LlmConversationSummarizer
+import agent.memory.strategy.summary.SummaryCompressionMemoryStrategy
 import java.nio.file.Path
 import llm.core.LanguageModel
 
@@ -33,6 +38,7 @@ class MrAgent(
         summaryBatchSize = 3,
         summarizer = LlmConversationSummarizer(languageModel)
     ),
+    memoryLayerAllocator: MemoryLayerAllocator = RuleBasedMemoryLayerAllocator(),
     private val memoryManager: MemoryManager = DefaultMemoryManager(
         languageModel = languageModel,
         systemPrompt = buildSystemPrompt(
@@ -40,7 +46,8 @@ class MrAgent(
             responseFormatInstruction = TextResponseFormat.formatInstruction
         ),
         memoryStrategy = memoryStrategy,
-        lifecycleListener = lifecycleListener
+        lifecycleListener = lifecycleListener,
+        memoryLayerAllocator = memoryLayerAllocator
     )
 ) : Agent<String> {
     override val responseFormat: ResponseFormat<String> = TextResponseFormat
@@ -85,6 +92,17 @@ class MrAgent(
     }
 
     override fun inspectMemory(): MemorySnapshot = memoryManager.memorySnapshot()
+
+    override fun inspectPendingMemory(): PendingMemoryState = memoryManager.pendingMemory()
+
+    override fun approvePendingMemory(candidateIds: List<String>): PendingMemoryActionResult =
+        memoryManager.approvePendingMemory(candidateIds)
+
+    override fun rejectPendingMemory(candidateIds: List<String>): PendingMemoryActionResult =
+        memoryManager.rejectPendingMemory(candidateIds)
+
+    override fun editPendingMemory(candidateId: String, edit: PendingMemoryEdit): PendingMemoryState =
+        memoryManager.editPendingMemory(candidateId, edit)
 
     override fun <TCapability : AgentCapability> capability(capabilityType: Class<TCapability>): TCapability? =
         memoryManager.capability(capabilityType)

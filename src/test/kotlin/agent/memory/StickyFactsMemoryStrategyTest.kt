@@ -20,15 +20,17 @@ class StickyFactsMemoryStrategyTest {
             factsBatchSize = 3,
             factsExtractor = NoOpFactsExtractor()
         )
+        val messages = listOf(
+            ChatMessage(ChatRole.SYSTEM, "system"),
+            ChatMessage(ChatRole.USER, "u1"),
+            ChatMessage(ChatRole.ASSISTANT, "a1"),
+            ChatMessage(ChatRole.USER, "u2"),
+            ChatMessage(ChatRole.ASSISTANT, "a2")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(ChatRole.SYSTEM, "system"),
-                    ChatMessage(ChatRole.USER, "u1"),
-                    ChatMessage(ChatRole.ASSISTANT, "a1"),
-                    ChatMessage(ChatRole.USER, "u2"),
-                    ChatMessage(ChatRole.ASSISTANT, "a2")
-                ),
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = StickyFactsStrategyState(
                     facts = linkedMapOf(
                         "goal" to "Собрать ТЗ",
@@ -38,6 +40,8 @@ class StickyFactsMemoryStrategyTest {
                 )
             )
         )
+
+        val refreshedState = strategy.refreshState(state)
 
         assertEquals(
             listOf(
@@ -49,7 +53,7 @@ class StickyFactsMemoryStrategyTest {
                 ChatMessage(ChatRole.USER, "u2"),
                 ChatMessage(ChatRole.ASSISTANT, "a2")
             ),
-            strategy.effectiveContext(state)
+            strategy.effectiveContext(refreshedState)
         )
     }
 
@@ -63,14 +67,16 @@ class StickyFactsMemoryStrategyTest {
             factsBatchSize = 3,
             factsExtractor = extractor
         )
+        val messages = listOf(
+            ChatMessage(ChatRole.SYSTEM, "system"),
+            ChatMessage(ChatRole.USER, "u1"),
+            ChatMessage(ChatRole.ASSISTANT, "a1"),
+            ChatMessage(ChatRole.USER, "u2")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(ChatRole.SYSTEM, "system"),
-                    ChatMessage(ChatRole.USER, "u1"),
-                    ChatMessage(ChatRole.ASSISTANT, "a1"),
-                    ChatMessage(ChatRole.USER, "u2")
-                )
+                rawMessages = messages,
+                derivedMessages = messages
             )
         )
 
@@ -99,18 +105,20 @@ class StickyFactsMemoryStrategyTest {
             factsBatchSize = 2,
             factsExtractor = extractor
         )
+        val messages = listOf(
+            ChatMessage(ChatRole.SYSTEM, "system"),
+            ChatMessage(ChatRole.USER, "u0"),
+            ChatMessage(ChatRole.ASSISTANT, "a0"),
+            ChatMessage(ChatRole.USER, "u1"),
+            ChatMessage(ChatRole.ASSISTANT, "a1"),
+            ChatMessage(ChatRole.USER, "u2"),
+            ChatMessage(ChatRole.ASSISTANT, "a2"),
+            ChatMessage(ChatRole.USER, "u3")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(ChatRole.SYSTEM, "system"),
-                    ChatMessage(ChatRole.USER, "u0"),
-                    ChatMessage(ChatRole.ASSISTANT, "a0"),
-                    ChatMessage(ChatRole.USER, "u1"),
-                    ChatMessage(ChatRole.ASSISTANT, "a1"),
-                    ChatMessage(ChatRole.USER, "u2"),
-                    ChatMessage(ChatRole.ASSISTANT, "a2"),
-                    ChatMessage(ChatRole.USER, "u3")
-                ),
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = StickyFactsStrategyState(
                     facts = mapOf("existing" to "value"),
                     coveredMessagesCount = 4
@@ -152,12 +160,14 @@ class StickyFactsMemoryStrategyTest {
             factsBatchSize = 1,
             factsExtractor = extractor
         )
+        val messages = listOf(
+            ChatMessage(ChatRole.SYSTEM, "system"),
+            ChatMessage(ChatRole.USER, "Обнови цель.")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(ChatRole.SYSTEM, "system"),
-                    ChatMessage(ChatRole.USER, "Обнови цель.")
-                ),
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = SummaryStrategyState()
             )
         )
@@ -178,12 +188,14 @@ class StickyFactsMemoryStrategyTest {
             factsBatchSize = 1,
             factsExtractor = extractor
         )
+        val messages = listOf(
+            ChatMessage(ChatRole.SYSTEM, "system"),
+            ChatMessage(ChatRole.USER, "Это только preview")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(ChatRole.SYSTEM, "system"),
-                    ChatMessage(ChatRole.USER, "Это только preview")
-                )
+                rawMessages = messages,
+                derivedMessages = messages
             )
         )
 

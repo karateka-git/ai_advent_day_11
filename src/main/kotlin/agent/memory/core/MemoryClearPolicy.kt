@@ -1,6 +1,7 @@
 package agent.memory.core
 
 import agent.memory.model.MemoryState
+import agent.memory.model.PendingMemoryState
 import agent.memory.model.ShortTermMemory
 import agent.memory.model.WorkingMemory
 import llm.core.model.ChatMessage
@@ -35,8 +36,9 @@ class TaskScopedMemoryClearPolicy : MemoryClearPolicy {
     override fun clear(state: MemoryState, systemMessage: ChatMessage, memoryStrategy: MemoryStrategy): MemoryState =
         memoryStrategy.refreshState(
             state.copy(
-                shortTerm = ShortTermMemory(messages = listOf(systemMessage)),
-                working = WorkingMemory()
+                shortTerm = ShortTermMemory(rawMessages = listOf(systemMessage)),
+                working = WorkingMemory(),
+                pending = PendingMemoryState()
             ),
             MemoryStateRefreshMode.REGULAR
         )

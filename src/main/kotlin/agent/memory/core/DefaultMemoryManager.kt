@@ -3,14 +3,25 @@ package agent.memory.core
 import agent.capability.AgentCapability
 import agent.core.AgentTokenStats
 import agent.lifecycle.AgentLifecycleListener
-import agent.lifecycle.ContextCompressionStats
 import agent.lifecycle.NoOpAgentLifecycleListener
+import agent.memory.layer.DefaultMemoryConfirmationPolicy
+import agent.memory.layer.DurableMemoryCandidateApplier
+import agent.memory.layer.MemoryCandidateApplier
+import agent.memory.layer.MemoryCandidateValidator
+import agent.memory.layer.MemoryConfirmationPolicy
 import agent.memory.layer.MemoryLayerAllocator
 import agent.memory.layer.MemoryLayerWritePolicy
 import agent.memory.layer.RuleBasedMemoryLayerAllocator
+import agent.memory.layer.RuleBasedMemoryNoteMergePolicy
 import agent.memory.layer.UserMessageOnlyMemoryLayerWritePolicy
+import agent.memory.model.MemoryCandidateDraft
+import agent.memory.model.MemoryLayer
 import agent.memory.model.MemorySnapshot
 import agent.memory.model.MemoryState
+import agent.memory.model.PendingMemoryActionResult
+import agent.memory.model.PendingMemoryCandidate
+import agent.memory.model.PendingMemoryEdit
+import agent.memory.model.PendingMemoryState
 import agent.memory.model.ShortTermMemory
 import agent.memory.persistence.JsonMemoryStateRepository
 import agent.memory.persistence.MemoryStateRepository
@@ -19,7 +30,6 @@ import agent.memory.prompt.LayeredMemoryPromptAssembler
 import agent.memory.prompt.MemoryContextService
 import agent.memory.strategy.MemoryStrategyType
 import agent.memory.strategy.branching.BranchCoordinator
-import agent.memory.strategy.branching.BranchingCapability
 import agent.memory.strategy.branching.BranchingMemoryCapabilityAdapter
 import agent.memory.strategy.nocompression.NoCompressionMemoryStrategy
 import java.nio.file.Path
@@ -39,6 +49,10 @@ class DefaultMemoryManager(
     private val branchCoordinator: BranchCoordinator = BranchCoordinator(),
     private val memoryLayerAllocator: MemoryLayerAllocator = RuleBasedMemoryLayerAllocator(),
     private val memoryLayerWritePolicy: MemoryLayerWritePolicy = UserMessageOnlyMemoryLayerWritePolicy(),
+    private val candidateValidator: MemoryCandidateValidator = MemoryCandidateValidator(),
+    private val confirmationPolicy: MemoryConfirmationPolicy = DefaultMemoryConfirmationPolicy(),
+    private val candidateApplier: MemoryCandidateApplier =
+        DurableMemoryCandidateApplier(RuleBasedMemoryNoteMergePolicy()),
     private val clearPolicy: MemoryClearPolicy = TaskScopedMemoryClearPolicy(),
     private val compressionObserver: MemoryCompressionObserver = SummaryBasedMemoryCompressionObserver(),
     private val contextService: MemoryContextService = DefaultMemoryContextService(
@@ -56,7 +70,7 @@ class DefaultMemoryManager(
         persistState = ::saveState
     )
 
-    override fun currentConversation(): List<ChatMessage> = state.shortTerm.messages.toList()
+    override fun currentConversation(): List<ChatMessage> = state.shortTerm.rawMessages.toList()
 
     override fun previewTokenStats(userPrompt: String): AgentTokenStats {
         val effectiveConversation = contextService.effectiveConversation(systemPrompt, state)
@@ -78,8 +92,8 @@ class DefaultMemoryManager(
     override fun appendUserMessage(userPrompt: String): List<ChatMessage> {
         val userMessage = ChatMessage(role = ChatRole.USER, content = userPrompt)
         val stateWithMessage = appendShortTermMessage(state, userMessage)
-        val stateWithAllocatedLayers = applyAllocationIfAllowed(stateWithMessage, userMessage)
-        state = refreshState(stateWithAllocatedLayers, notifyCompression = true)
+        val stateWithCandidates = processCandidatesIfAllowed(stateWithMessage, userMessage)
+        state = refreshState(stateWithCandidates, notifyCompression = true)
         saveState()
         return contextService.effectiveConversation(systemPrompt, state)
     }
@@ -87,12 +101,12 @@ class DefaultMemoryManager(
     override fun appendAssistantMessage(content: String) {
         val assistantMessage = ChatMessage(role = ChatRole.ASSISTANT, content = content)
         val stateWithMessage = appendShortTermMessage(state, assistantMessage)
-        val stateWithAllocatedLayers = applyAllocationIfAllowed(stateWithMessage, assistantMessage)
+        val stateWithCandidates = processCandidatesIfAllowed(stateWithMessage, assistantMessage)
         state =
             if (memoryStrategy.type == MemoryStrategyType.BRANCHING) {
-                memoryStrategy.refreshState(stateWithAllocatedLayers, MemoryStateRefreshMode.REGULAR)
+                memoryStrategy.refreshState(stateWithCandidates, MemoryStateRefreshMode.REGULAR)
             } else {
-                stateWithAllocatedLayers
+                stateWithCandidates
             }
         saveState()
     }
@@ -108,7 +122,7 @@ class DefaultMemoryManager(
 
     override fun replaceContextFromFile(sourcePath: Path) {
         val importedState = memoryStateRepository.loadFrom(sourcePath)
-        require(importedState.shortTerm.messages.isNotEmpty()) {
+        require(importedState.shortTerm.rawMessages.isNotEmpty()) {
             "Файл истории $sourcePath пустой или не содержит сообщений."
         }
 
@@ -124,6 +138,48 @@ class DefaultMemoryManager(
             shortTermStrategyType = memoryStrategy.type
         )
 
+    override fun pendingMemory(): PendingMemoryState = state.pending
+
+    override fun approvePendingMemory(candidateIds: List<String>): PendingMemoryActionResult {
+        val (selected, remaining) = selectPendingCandidates(candidateIds)
+        val updatedState = candidateApplier.apply(
+            state = state.copy(pending = remaining),
+            candidates = selected.map(::toDraft)
+        )
+        saveState(updatedState)
+        return PendingMemoryActionResult(
+            affectedIds = selected.map(PendingMemoryCandidate::id),
+            pendingState = state.pending
+        )
+    }
+
+    override fun rejectPendingMemory(candidateIds: List<String>): PendingMemoryActionResult {
+        val (selected, remaining) = selectPendingCandidates(candidateIds)
+        state = state.copy(pending = remaining)
+        saveState()
+        return PendingMemoryActionResult(
+            affectedIds = selected.map(PendingMemoryCandidate::id),
+            pendingState = state.pending
+        )
+    }
+
+    override fun editPendingMemory(candidateId: String, edit: PendingMemoryEdit): PendingMemoryState {
+        val existing = state.pending.candidates.firstOrNull { it.id == candidateId }
+            ?: error("Pending-кандидат '$candidateId' не найден.")
+        val updatedCandidate = applyEdit(existing, edit)
+        candidateValidator.validateEditedCandidate(toDraft(updatedCandidate))
+
+        state = state.copy(
+            pending = state.pending.copy(
+                candidates = state.pending.candidates.map { candidate ->
+                    if (candidate.id == candidateId) updatedCandidate else candidate
+                }
+            )
+        )
+        saveState()
+        return state.pending
+    }
+
     override fun <TCapability : AgentCapability> capability(capabilityType: Class<TCapability>): TCapability? =
         branchingCapability
             .takeIf { memoryStrategy.type == MemoryStrategyType.BRANCHING && capabilityType.isInstance(it) }
@@ -131,12 +187,20 @@ class DefaultMemoryManager(
 
     private fun loadMemoryState(): MemoryState {
         val savedState = memoryStateRepository.load()
-        if (savedState.shortTerm.messages.isNotEmpty()) {
-            return memoryStrategy.refreshState(savedState, MemoryStateRefreshMode.REGULAR)
+        if (savedState.shortTerm.rawMessages.isNotEmpty()) {
+            val refreshedState = memoryStrategy.refreshState(savedState, MemoryStateRefreshMode.REGULAR)
+            if (refreshedState != savedState) {
+                memoryStateRepository.save(refreshedState)
+            }
+            return refreshedState
         }
 
         val initialState = memoryStrategy.refreshState(
-            MemoryState(shortTerm = ShortTermMemory(messages = listOf(createSystemMessage()))),
+            MemoryState(
+                shortTerm = ShortTermMemory(
+                    rawMessages = listOf(createSystemMessage())
+                )
+            ),
             MemoryStateRefreshMode.REGULAR
         )
         saveState(initialState)
@@ -161,10 +225,7 @@ class DefaultMemoryManager(
     private fun previewStateForUserPrompt(userPrompt: String): MemoryState {
         val userMessage = ChatMessage(role = ChatRole.USER, content = userPrompt)
         return refreshState(
-            applyAllocationIfAllowed(
-                appendShortTermMessage(state, userMessage),
-                userMessage
-            ),
+            appendShortTermMessage(state, userMessage),
             notifyCompression = false,
             mode = MemoryStateRefreshMode.PREVIEW
         )
@@ -206,19 +267,90 @@ class DefaultMemoryManager(
     private fun appendShortTermMessage(currentState: MemoryState, message: ChatMessage): MemoryState =
         currentState.copy(
             shortTerm = currentState.shortTerm.copy(
-                messages = currentState.shortTerm.messages + message
+                rawMessages = currentState.shortTerm.rawMessages + message
             )
         )
 
-    private fun applyAllocationIfAllowed(currentState: MemoryState, message: ChatMessage): MemoryState {
+    private fun processCandidatesIfAllowed(currentState: MemoryState, message: ChatMessage): MemoryState {
         if (!memoryLayerWritePolicy.shouldAllocate(message)) {
             return currentState
         }
 
-        val allocation = memoryLayerAllocator.allocate(currentState, message)
+        val extractedCandidates = memoryLayerAllocator.extractCandidates(currentState, message)
+        val validatedCandidates = candidateValidator.validate(message, extractedCandidates)
+        val confirmationDecision = confirmationPolicy.classify(message.role, validatedCandidates)
+        val stateWithAutoApplied = candidateApplier.apply(currentState, confirmationDecision.autoApply)
+        return appendPendingCandidates(stateWithAutoApplied, message, confirmationDecision.pending)
+    }
+
+    private fun appendPendingCandidates(
+        currentState: MemoryState,
+        message: ChatMessage,
+        drafts: List<MemoryCandidateDraft>
+    ): MemoryState {
+        if (drafts.isEmpty()) {
+            return currentState
+        }
+
+        val startId = currentState.pending.nextId
+        val additions = drafts.mapIndexed { index, draft ->
+            PendingMemoryCandidate(
+                id = "p${startId + index}",
+                targetLayer = draft.targetLayer,
+                category = draft.category,
+                content = draft.content,
+                sourceRole = message.role,
+                sourceMessage = message.content
+            )
+        }
+
         return currentState.copy(
-            working = allocation.workingMemory,
-            longTerm = allocation.longTermMemory
+            pending = currentState.pending.copy(
+                candidates = mergePendingCandidates(currentState.pending.candidates, additions),
+                nextId = startId + drafts.size
+            )
         )
     }
+
+    private fun mergePendingCandidates(
+        existing: List<PendingMemoryCandidate>,
+        additions: List<PendingMemoryCandidate>
+    ): List<PendingMemoryCandidate> =
+        (existing + additions).distinctBy { candidate ->
+            listOf(
+                candidate.targetLayer.name,
+                candidate.category.lowercase(),
+                candidate.content.lowercase(),
+                candidate.sourceRole.name,
+                candidate.sourceMessage.lowercase()
+            ).joinToString("|")
+        }
+
+    private fun selectPendingCandidates(candidateIds: List<String>): Pair<List<PendingMemoryCandidate>, PendingMemoryState> {
+        val selectedIds = candidateIds.toSet()
+        val selectAll = selectedIds.isEmpty()
+        val selected = state.pending.candidates.filter { selectAll || it.id in selectedIds }
+        require(selected.isNotEmpty()) {
+            "Нет pending-кандидатов для выбранных идентификаторов."
+        }
+
+        val remaining = state.pending.copy(
+            candidates = state.pending.candidates.filterNot { candidate -> selectAll || candidate.id in selectedIds }
+        )
+        return selected to remaining
+    }
+
+    private fun applyEdit(candidate: PendingMemoryCandidate, edit: PendingMemoryEdit): PendingMemoryCandidate =
+        when (edit) {
+            is PendingMemoryEdit.UpdateText -> candidate.copy(content = edit.content.trim())
+            is PendingMemoryEdit.UpdateLayer -> candidate.copy(targetLayer = edit.targetLayer)
+            is PendingMemoryEdit.UpdateCategory -> candidate.copy(category = edit.category.trim())
+        }
+
+    private fun toDraft(candidate: PendingMemoryCandidate): MemoryCandidateDraft =
+        MemoryCandidateDraft(
+            targetLayer = candidate.targetLayer,
+            category = candidate.category,
+            content = candidate.content
+        )
 }

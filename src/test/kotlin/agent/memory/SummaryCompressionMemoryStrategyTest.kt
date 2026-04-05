@@ -28,7 +28,16 @@ class SummaryCompressionMemoryStrategyTest {
 
         assertEquals(
             messages,
-            strategy.effectiveContext(MemoryState(shortTerm = ShortTermMemory(messages = messages)))
+            strategy.effectiveContext(
+                strategy.refreshState(
+                    MemoryState(
+                        shortTerm = ShortTermMemory(
+                            rawMessages = messages,
+                            derivedMessages = messages
+                        )
+                    )
+                )
+            )
         )
     }
 
@@ -49,7 +58,8 @@ class SummaryCompressionMemoryStrategyTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = messages,
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = SummaryStrategyState(
                     summary = ConversationSummary(
                         content = "Пользователь уже рассказал о прошлой задаче.",
@@ -59,6 +69,8 @@ class SummaryCompressionMemoryStrategyTest {
                 )
             )
         )
+
+        val refreshedState = strategy.refreshState(state)
 
         assertEquals(
             listOf(
@@ -71,9 +83,9 @@ class SummaryCompressionMemoryStrategyTest {
                 ChatMessage(role = ChatRole.ASSISTANT, content = "a2"),
                 ChatMessage(role = ChatRole.USER, content = "u3")
             ),
-            strategy.effectiveContext(state)
+            strategy.effectiveContext(refreshedState)
         )
-        assertEquals(messages, state.shortTerm.messages)
+        assertEquals(messages, refreshedState.shortTerm.rawMessages)
     }
 
     @Test
@@ -95,7 +107,8 @@ class SummaryCompressionMemoryStrategyTest {
         val refreshedState = strategy.refreshState(
             MemoryState(
                 shortTerm = ShortTermMemory(
-                    messages = messages,
+                    rawMessages = messages,
+                    derivedMessages = messages,
                     strategyState = SummaryStrategyState()
                 )
             )
@@ -106,7 +119,7 @@ class SummaryCompressionMemoryStrategyTest {
         assertEquals("Пользователь: u1\nАссистент: a1", refreshedSummary?.content)
         assertEquals(2, refreshedSummary?.coveredMessagesCount)
         assertEquals(2, refreshedStrategyState?.coveredMessagesCount)
-        assertEquals(messages, refreshedState.shortTerm.messages)
+        assertEquals(messages, refreshedState.shortTerm.rawMessages)
     }
 
     @Test
@@ -118,7 +131,17 @@ class SummaryCompressionMemoryStrategyTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+                    ChatMessage(role = ChatRole.USER, content = "u1"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+                    ChatMessage(role = ChatRole.USER, content = "u2"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a2"),
+                    ChatMessage(role = ChatRole.USER, content = "u3"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a3"),
+                    ChatMessage(role = ChatRole.USER, content = "u4")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(role = ChatRole.SYSTEM, content = "system"),
                     ChatMessage(role = ChatRole.USER, content = "u1"),
                     ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
@@ -148,7 +171,7 @@ class SummaryCompressionMemoryStrategyTest {
         )
         assertEquals(4, refreshedSummary?.coveredMessagesCount)
         assertEquals(4, refreshedStrategyState?.coveredMessagesCount)
-        assertEquals(state.shortTerm.messages, refreshedState.shortTerm.messages)
+        assertEquals(state.shortTerm.rawMessages, refreshedState.shortTerm.rawMessages)
     }
 
     @Test
@@ -160,7 +183,17 @@ class SummaryCompressionMemoryStrategyTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+                    ChatMessage(role = ChatRole.USER, content = "u1"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+                    ChatMessage(role = ChatRole.USER, content = "u2"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a2"),
+                    ChatMessage(role = ChatRole.USER, content = "u3"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a3"),
+                    ChatMessage(role = ChatRole.USER, content = "u4")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(role = ChatRole.SYSTEM, content = "system"),
                     ChatMessage(role = ChatRole.USER, content = "u1"),
                     ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
@@ -180,7 +213,7 @@ class SummaryCompressionMemoryStrategyTest {
         assertEquals("Ассистент: a2\nПользователь: u3", refreshedSummary?.content)
         assertEquals(5, refreshedSummary?.coveredMessagesCount)
         assertEquals(5, refreshedStrategyState?.coveredMessagesCount)
-        assertEquals(state.shortTerm.messages, refreshedState.shortTerm.messages)
+        assertEquals(state.shortTerm.rawMessages, refreshedState.shortTerm.rawMessages)
         assertEquals(
             listOf(
                 ChatMessage(role = ChatRole.SYSTEM, content = "system"),
@@ -204,7 +237,13 @@ class SummaryCompressionMemoryStrategyTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+                    ChatMessage(role = ChatRole.USER, content = "u1"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+                    ChatMessage(role = ChatRole.USER, content = "u2")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(role = ChatRole.SYSTEM, content = "system"),
                     ChatMessage(role = ChatRole.USER, content = "u1"),
                     ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
@@ -231,7 +270,15 @@ class SummaryCompressionMemoryStrategyTest {
         )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+                    ChatMessage(role = ChatRole.USER, content = "u1"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+                    ChatMessage(role = ChatRole.USER, content = "u2"),
+                    ChatMessage(role = ChatRole.ASSISTANT, content = "a2"),
+                    ChatMessage(role = ChatRole.USER, content = "u3")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(role = ChatRole.SYSTEM, content = "system"),
                     ChatMessage(role = ChatRole.USER, content = "u1"),
                     ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),

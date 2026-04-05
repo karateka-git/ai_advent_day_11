@@ -1,24 +1,25 @@
-﻿import agent.core.Agent
-import agent.impl.MrAgent
+import agent.core.Agent
 import agent.lifecycle.AgentLifecycleListener
 import agent.lifecycle.AppEventLifecycleListener
 import agent.memory.strategy.MemoryStrategyFactory
 import agent.memory.strategy.MemoryStrategyOption
 import agent.memory.strategy.MemoryStrategyType
+import app.output.AppEvent
+import app.output.AppEventSink
+import bootstrap.AgentFactory
 import bootstrap.ApplicationBootstrap
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.Charset
+import java.nio.charset.StandardCharsets
 import llm.core.LanguageModel
 import llm.core.LanguageModelFactory
 import llm.core.model.ChatRole
-import app.output.AppEvent
-import app.output.AppEventSink
 import ui.cli.CliCommands
+import ui.cli.CliRenderer
 import ui.cli.CliSessionController
 import ui.cli.CliSessionControllerResult
 import ui.cli.CliSessionState
-import ui.cli.CliRenderer
 
 private val consoleReader = BufferedReader(
     InputStreamReader(System.`in`, detectConsoleCharset())
@@ -33,6 +34,10 @@ private val systemConsole = System.console()
  */
 fun main() {
     val runtime = ApplicationBootstrap.createRuntime()
+    val agentFactory = AgentFactory(
+        config = runtime.config,
+        httpClient = runtime.httpClient
+    )
     val appEventSink: AppEventSink = CliRenderer()
     val lifecycleListener: AgentLifecycleListener = AppEventLifecycleListener(appEventSink)
     val languageModel = runtime.languageModel
@@ -44,6 +49,7 @@ fun main() {
 
     val defaultMemoryStrategyOption = MemoryStrategyFactory.defaultOption()
     val agent: Agent<String> = createAgent(
+        agentFactory = agentFactory,
         languageModel = languageModel,
         lifecycleListener = lifecycleListener,
         strategyType = defaultMemoryStrategyOption.type
@@ -60,7 +66,9 @@ fun main() {
         lifecycleListener = lifecycleListener,
         appEventSink = appEventSink,
         createLanguageModel = LanguageModelFactory::create,
-        createAgent = ::createAgent,
+        createAgent = { model, listener, strategyType ->
+            createAgent(agentFactory, model, listener, strategyType)
+        },
         selectMemoryStrategy = { selectMemoryStrategyOption(appEventSink) },
         warmUpLanguageModel = { model, listener ->
             ApplicationBootstrap.warmUpTokenCounter(
@@ -72,10 +80,7 @@ fun main() {
     )
 
     appEventSink.emit(
-        AppEvent.SessionStarted(
-            modelsCommand = CliCommands.MODELS,
-            useCommand = CliCommands.USE
-        )
+        AppEvent.SessionStarted
     )
     appEventSink.emit(
         AppEvent.AgentInfoAvailable(
@@ -99,17 +104,15 @@ fun main() {
  * Создаёт новый экземпляр агента для выбранной модели и стратегии памяти.
  */
 private fun createAgent(
+    agentFactory: AgentFactory,
     languageModel: LanguageModel,
     lifecycleListener: AgentLifecycleListener,
     strategyType: MemoryStrategyType
 ): Agent<String> =
-    MrAgent(
+    agentFactory.create(
         languageModel = languageModel,
         lifecycleListener = lifecycleListener,
-        memoryStrategy = MemoryStrategyFactory.create(
-            strategyType = strategyType,
-            languageModel = languageModel
-        )
+        strategyType = strategyType
     )
 
 /**
@@ -137,8 +140,14 @@ private fun selectMemoryStrategyOption(appEventSink: AppEventSink): MemoryStrate
 /**
  * Определяет кодировку, используемую текущей консольной сессией.
  */
-private fun detectConsoleCharset(): Charset {
-    val nativeEncoding = System.getProperty("native.encoding")
+internal fun detectConsoleCharset(
+    hasConsole: Boolean = System.console() != null,
+    nativeEncoding: String? = System.getProperty("native.encoding")
+): Charset {
+    if (!hasConsole) {
+        return StandardCharsets.UTF_8
+    }
+
     return if (nativeEncoding.isNullOrBlank()) {
         Charset.defaultCharset()
     } else {
@@ -147,8 +156,17 @@ private fun detectConsoleCharset(): Charset {
 }
 
 /**
+ * Очищает ввод от BOM и его искажённого текстового следа в начале строки.
+ */
+internal fun sanitizeConsoleInput(input: String): String =
+    input
+        .removePrefix("\uFEFF")
+        .removePrefix("ï»¿")
+        .removePrefix("п»ї")
+
+/**
  * Читает одну строку из консоли, предпочитая нативный API консоли, если он доступен.
  */
-private fun readConsoleLine(): String? = systemConsole?.readLine() ?: consoleReader.readLine()
-
-
+private fun readConsoleLine(): String? =
+    (systemConsole?.readLine() ?: consoleReader.readLine())
+        ?.let(::sanitizeConsoleInput)

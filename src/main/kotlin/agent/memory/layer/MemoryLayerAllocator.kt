@@ -1,97 +1,69 @@
 package agent.memory.layer
 
-import agent.memory.model.LongTermMemory
-import agent.memory.model.MemoryNote
+import agent.memory.model.MemoryCandidateDraft
+import agent.memory.model.MemoryLayer
 import agent.memory.model.MemoryState
-import agent.memory.model.WorkingMemory
 import llm.core.model.ChatMessage
 import llm.core.model.ChatRole
 
 /**
- * Явно решает, что из нового сообщения нужно сохранить в рабочую и долговременную память.
+ * Явно извлекает кандидатов на сохранение в durable memory слои.
  */
 interface MemoryLayerAllocator {
     /**
-     * Распределяет новое сообщение по слоям памяти поверх текущего состояния.
+     * Извлекает из нового сообщения кандидатов для рабочей и долговременной памяти.
      *
      * @param state текущее состояние многослойной памяти.
      * @param message новое сообщение, которое нужно проанализировать.
-     * @return обновлённые рабочий и долговременный слои памяти.
+     * @return черновики заметок, которые затем пройдут валидацию и confirmation policy.
      */
-    fun allocate(state: MemoryState, message: ChatMessage): MemoryLayerAllocation
+    fun extractCandidates(state: MemoryState, message: ChatMessage): List<MemoryCandidateDraft>
 }
-
-/**
- * Результат распределения данных по слоям памяти.
- *
- * @property workingMemory обновлённая рабочая память.
- * @property longTermMemory обновлённая долговременная память.
- */
-data class MemoryLayerAllocation(
-    val workingMemory: WorkingMemory = WorkingMemory(),
-    val longTermMemory: LongTermMemory = LongTermMemory()
-)
 
 /**
  * Простая реализация распределителя памяти на основе правил.
  *
- * Извлекает отдельные смысловые фрагменты из сообщения и объединяет их с текущей памятью
- * по правилам выбранной политики объединения.
+ * Извлекает отдельные смысловые фрагменты из сообщения, но не пишет их сразу в durable memory.
  */
-class RuleBasedMemoryLayerAllocator(
-    private val noteMergePolicy: MemoryNoteMergePolicy = RuleBasedMemoryNoteMergePolicy()
-) : MemoryLayerAllocator {
+class RuleBasedMemoryLayerAllocator : MemoryLayerAllocator {
     /**
-     * Выделяет заметки рабочей и долговременной памяти по набору строковых маркеров.
+     * Выделяет кандидатов для рабочей и долговременной памяти по набору строковых маркеров.
      *
      * @param state текущее состояние памяти.
      * @param message новое сообщение пользователя или ассистента.
-     * @return обновлённые рабочий и долговременный слои.
+     * @return черновики заметок с целевым memory layer.
      */
-    override fun allocate(state: MemoryState, message: ChatMessage): MemoryLayerAllocation {
+    override fun extractCandidates(state: MemoryState, message: ChatMessage): List<MemoryCandidateDraft> {
         if (message.role == ChatRole.SYSTEM) {
-            return MemoryLayerAllocation(
-                workingMemory = state.working,
-                longTermMemory = state.longTerm
-            )
+            return emptyList()
         }
 
         val segments = extractSegments(message.content)
-        val workingNotes = buildList {
-            maybeAdd("goal", segments, goalMarkers)
-            maybeAdd("constraint", segments, constraintMarkers)
-            maybeAdd("deadline", segments, deadlineMarkers)
-            maybeAdd("budget", segments, budgetMarkers)
-            maybeAdd("integration", segments, integrationMarkers)
-            maybeAdd("decision", segments, decisionMarkers)
-            maybeAdd("open_question", segments, openQuestionMarkers)
+        return buildList {
+            maybeAdd(MemoryLayer.WORKING, "goal", segments, goalMarkers)
+            maybeAdd(MemoryLayer.WORKING, "constraint", segments, constraintMarkers)
+            maybeAdd(MemoryLayer.WORKING, "deadline", segments, deadlineMarkers)
+            maybeAdd(MemoryLayer.WORKING, "budget", segments, budgetMarkers)
+            maybeAdd(MemoryLayer.WORKING, "integration", segments, integrationMarkers)
+            maybeAdd(MemoryLayer.WORKING, "decision", segments, decisionMarkers)
+            maybeAdd(MemoryLayer.WORKING, "open_question", segments, openQuestionMarkers)
+            maybeAdd(MemoryLayer.LONG_TERM, "communication_style", segments, communicationStyleMarkers)
+            maybeAdd(MemoryLayer.LONG_TERM, "persistent_preference", segments, preferenceMarkers)
+            maybeAdd(MemoryLayer.LONG_TERM, "architectural_agreement", segments, architectureMarkers)
+            maybeAdd(MemoryLayer.LONG_TERM, "reusable_knowledge", segments, reusableKnowledgeMarkers)
         }
-
-        val longTermNotes = buildList {
-            maybeAdd("communication_style", segments, communicationStyleMarkers)
-            maybeAdd("persistent_preference", segments, preferenceMarkers)
-            maybeAdd("architectural_agreement", segments, architectureMarkers)
-            maybeAdd("reusable_knowledge", segments, reusableKnowledgeMarkers)
-        }
-
-        return MemoryLayerAllocation(
-            workingMemory = WorkingMemory(
-                notes = noteMergePolicy.merge(state.working.notes, workingNotes)
-            ),
-            longTermMemory = LongTermMemory(
-                notes = noteMergePolicy.merge(state.longTerm.notes, longTermNotes)
-            )
-        )
     }
 
     /**
-     * Добавляет заметки по всем сегментам сообщения, которые совпали с маркерами выбранной категории.
+     * Добавляет кандидаты по всем сегментам сообщения, которые совпали с маркерами выбранной категории.
      *
+     * @param layer целевой слой памяти.
      * @param category категория заметки.
      * @param segments смысловые сегменты исходного сообщения.
      * @param markers список маркеров категории.
      */
-    private fun MutableList<MemoryNote>.maybeAdd(
+    private fun MutableList<MemoryCandidateDraft>.maybeAdd(
+        layer: MemoryLayer,
         category: String,
         segments: List<String>,
         markers: List<String>
@@ -102,13 +74,18 @@ class RuleBasedMemoryLayerAllocator(
                 markers.any { marker -> normalized.contains(marker) }
             }
             .forEach { segment ->
-                add(MemoryNote(category = category, content = segment))
+                add(
+                    MemoryCandidateDraft(
+                        targetLayer = layer,
+                        category = category,
+                        content = segment
+                    )
+                )
             }
     }
 
     /**
-     * Делит сообщение на смысловые сегменты, чтобы рабочая и долговременная память
-     * не хранили исходный текст целиком.
+     * Делит сообщение на смысловые сегменты, чтобы durable memory не хранила исходный текст целиком.
      *
      * @param content исходный текст сообщения.
      * @return очищенные непустые сегменты сообщения.
@@ -181,7 +158,7 @@ class RuleBasedMemoryLayerAllocator(
         val communicationStyleMarkers = listOf(
             "отвечай",
             "пиши",
-            "коротко",
+            "кратко",
             "подробно",
             "на русском",
             "стиль общения"

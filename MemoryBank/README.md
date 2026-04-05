@@ -7,9 +7,16 @@
 - `rules/` - проектные устойчивые правила и специальные трактовки команд
 - `notes/` - короткие заметки и обзор проекта
 
+## Связь С Общим MemoryBank
+
+- общий банк памяти проекта находится в [C:\Users\compadre\Downloads\Projects\MemoryBank](C:/Users/compadre/Downloads/Projects/MemoryBank)
+- при работе над `ai_advent_day_11` нужно учитывать и локальный `MemoryBank`, и общий `MemoryBank`, если в общем банке есть применимые правила или договорённости
+
 ## Связанные проектные артефакты
 
 - основной ручной smoke-check сценарий лежит в [docs/manual-smoke-checklist.md](/C:/Users/compadre/Downloads/Projects/AiAdvent/day_11/docs/manual-smoke-checklist.md)
+- versioned scripted-сценарии smoke-check лежат в [scripts/smoke-check/scenarios](/C:/Users/compadre/Downloads/Projects/AiAdvent/day_11/scripts/smoke-check/scenarios)
 - `MemoryBank` только ссылается на этот сценарий и задаёт правило, когда его использовать
 - практические нюансы scripted smoke-check и проблем кодировки фиксируются в [development-policy.md](/C:/Users/compadre/Downloads/Projects/AiAdvent/day_11/MemoryBank/rules/development-policy.md)
+- актуальный smoke-check учитывает pending-confirmation flow и разреженный layered JSON, где пустые `working`, `longTerm` и `pending` секции могут не сериализоваться
 

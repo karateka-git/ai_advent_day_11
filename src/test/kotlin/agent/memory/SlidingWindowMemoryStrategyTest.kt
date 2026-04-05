@@ -14,17 +14,21 @@ class SlidingWindowMemoryStrategyTest {
     @Test
     fun `returns system messages and recent dialog tail`() {
         val strategy = SlidingWindowMemoryStrategy(recentMessagesCount = 2)
+        val messages = listOf(
+            ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+            ChatMessage(role = ChatRole.USER, content = "u1"),
+            ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+            ChatMessage(role = ChatRole.USER, content = "u2"),
+            ChatMessage(role = ChatRole.ASSISTANT, content = "a2")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
-                    ChatMessage(role = ChatRole.USER, content = "u1"),
-                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
-                    ChatMessage(role = ChatRole.USER, content = "u2"),
-                    ChatMessage(role = ChatRole.ASSISTANT, content = "a2")
-                )
+                rawMessages = messages,
+                derivedMessages = messages
             )
         )
+
+        val refreshedState = strategy.refreshState(state)
 
         assertEquals(
             listOf(
@@ -32,21 +36,23 @@ class SlidingWindowMemoryStrategyTest {
                 ChatMessage(role = ChatRole.USER, content = "u2"),
                 ChatMessage(role = ChatRole.ASSISTANT, content = "a2")
             ),
-            strategy.effectiveContext(state)
+            strategy.effectiveContext(refreshedState)
         )
     }
 
     @Test
     fun `ignores stored summary and uses full history tail`() {
         val strategy = SlidingWindowMemoryStrategy(recentMessagesCount = 2)
+        val messages = listOf(
+            ChatMessage(role = ChatRole.SYSTEM, content = "system"),
+            ChatMessage(role = ChatRole.USER, content = "u1"),
+            ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
+            ChatMessage(role = ChatRole.USER, content = "u2")
+        )
         val state = MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
-                    ChatMessage(role = ChatRole.SYSTEM, content = "system"),
-                    ChatMessage(role = ChatRole.USER, content = "u1"),
-                    ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
-                    ChatMessage(role = ChatRole.USER, content = "u2")
-                ),
+                rawMessages = messages,
+                derivedMessages = messages,
                 strategyState = SummaryStrategyState(
                     summary = ConversationSummary(
                         content = "Сжатый фрагмент",
@@ -57,13 +63,15 @@ class SlidingWindowMemoryStrategyTest {
             )
         )
 
+        val refreshedState = strategy.refreshState(state)
+
         assertEquals(
             listOf(
                 ChatMessage(role = ChatRole.SYSTEM, content = "system"),
                 ChatMessage(role = ChatRole.ASSISTANT, content = "a1"),
                 ChatMessage(role = ChatRole.USER, content = "u2")
             ),
-            strategy.effectiveContext(state)
+            strategy.effectiveContext(refreshedState)
         )
     }
 }

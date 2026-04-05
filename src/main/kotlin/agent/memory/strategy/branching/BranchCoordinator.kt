@@ -32,7 +32,7 @@ class BranchCoordinator {
                     latestCheckpointName = checkpointName,
                     checkpoints = branchingState.checkpoints + BranchCheckpointState(
                         name = checkpointName,
-                        messages = state.shortTerm.messages
+                        messages = state.shortTerm.rawMessages
                     )
                 )
             )
@@ -101,7 +101,8 @@ class BranchCoordinator {
 
         val updatedState = state.copy(
             shortTerm = state.shortTerm.copy(
-                messages = branch.messages,
+                rawMessages = branch.messages,
+                derivedMessages = branch.messages,
                 strategyState = branchingState.copy(activeBranchName = branch.name)
             )
         )

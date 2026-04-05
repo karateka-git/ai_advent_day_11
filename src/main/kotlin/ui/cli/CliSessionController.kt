@@ -3,6 +3,8 @@ package ui.cli
 import agent.capability.capability
 import agent.core.Agent
 import agent.lifecycle.AgentLifecycleListener
+import agent.memory.model.MemoryLayer
+import agent.memory.model.PendingMemoryEdit
 import agent.memory.strategy.MemoryStrategyOption
 import agent.memory.strategy.MemoryStrategyType
 import agent.memory.strategy.branching.BranchingCapability
@@ -40,12 +42,27 @@ class CliSessionController(
     /**
      * Обрабатывает один ввод пользователя: встроенную команду или обычный prompt.
      */
-    fun handle(input: String): CliSessionControllerResult {
-        return when (val command = commandParser.parse(input)) {
+    fun handle(input: String): CliSessionControllerResult =
+        when (val command = commandParser.parse(input)) {
             CliCommand.Empty -> CliSessionControllerResult.Continue
+            CliCommand.ShowHelp -> {
+                appEventSink.emit(
+                    AppEvent.CommandsAvailable(
+                        title = "Доступные команды",
+                        commands = GeneralCliCatalog.helpCommands
+                    )
+                )
+                CliSessionControllerResult.Continue
+            }
+
             CliCommand.Exit -> {
                 appEventSink.emit(AppEvent.SessionFinished)
                 CliSessionControllerResult.ExitRequested
+            }
+
+            is CliCommand.InvalidCommand -> {
+                appEventSink.emit(AppEvent.RequestFailed(formatInvalidCommandReason(command.reason)))
+                CliSessionControllerResult.Continue
             }
 
             CliCommand.Clear -> {
@@ -71,6 +88,82 @@ class CliSessionController(
                         selectedLayer = command.layer
                     )
                 )
+                CliSessionControllerResult.Continue
+            }
+
+            CliCommand.ShowPendingMemory -> {
+                appEventSink.emit(
+                    AppEvent.PendingMemoryAvailable(
+                        pending = state.agent.inspectPendingMemory()
+                    )
+                )
+                CliSessionControllerResult.Continue
+            }
+
+            CliCommand.ShowPendingMemoryCommands -> {
+                appEventSink.emit(
+                    AppEvent.PendingMemoryCommandsAvailable(
+                        commands = PendingMemoryCliCatalog.helpCommands
+                    )
+                )
+                CliSessionControllerResult.Continue
+            }
+
+            is CliCommand.ApprovePendingMemory -> {
+                try {
+                    val result = state.agent.approvePendingMemory(command.ids)
+                    appEventSink.emit(
+                        AppEvent.PendingMemoryActionCompleted(
+                            message =
+                                if (command.ids.isEmpty()) {
+                                    "Подтверждены все pending-кандидаты: ${result.affectedIds.size}"
+                                } else {
+                                    "Подтверждены pending-кандидаты: ${result.affectedIds.joinToString(", ")}"
+                                },
+                            pending = result.pendingState
+                        )
+                    )
+                } catch (error: Exception) {
+                    appEventSink.emit(AppEvent.RequestFailed(error.message))
+                }
+                CliSessionControllerResult.Continue
+            }
+
+            is CliCommand.RejectPendingMemory -> {
+                try {
+                    val result = state.agent.rejectPendingMemory(command.ids)
+                    appEventSink.emit(
+                        AppEvent.PendingMemoryActionCompleted(
+                            message =
+                                if (command.ids.isEmpty()) {
+                                    "Отклонены все pending-кандидаты: ${result.affectedIds.size}"
+                                } else {
+                                    "Отклонены pending-кандидаты: ${result.affectedIds.joinToString(", ")}"
+                                },
+                            pending = result.pendingState
+                        )
+                    )
+                } catch (error: Exception) {
+                    appEventSink.emit(AppEvent.RequestFailed(error.message))
+                }
+                CliSessionControllerResult.Continue
+            }
+
+            is CliCommand.EditPendingMemory -> {
+                try {
+                    val updatedPending = state.agent.editPendingMemory(
+                        candidateId = command.id,
+                        edit = parsePendingEdit(command.field, command.value)
+                    )
+                    appEventSink.emit(
+                        AppEvent.PendingMemoryActionCompleted(
+                            message = "Pending-кандидат ${command.id} обновлён.",
+                            pending = updatedPending
+                        )
+                    )
+                } catch (error: Exception) {
+                    appEventSink.emit(AppEvent.RequestFailed(error.message))
+                }
                 CliSessionControllerResult.Continue
             }
 
@@ -129,8 +222,14 @@ class CliSessionController(
 
             is CliCommand.UserPrompt -> {
                 try {
+                    val pendingBefore = state.agent.inspectPendingMemory().candidates.size
                     appEventSink.emit(AppEvent.TokenPreviewAvailable(state.agent.previewTokenStats(command.value)))
-                    val response = state.agent.ask(command.value)
+                    appEventSink.emit(AppEvent.ModelRequestStarted)
+                    val response = try {
+                        state.agent.ask(command.value)
+                    } finally {
+                        appEventSink.emit(AppEvent.ModelRequestFinished)
+                    }
                     appEventSink.emit(
                         AppEvent.AssistantResponseAvailable(
                             role = ChatRole.ASSISTANT,
@@ -138,6 +237,15 @@ class CliSessionController(
                             tokenStats = response.tokenStats
                         )
                     )
+                    val pendingAfter = state.agent.inspectPendingMemory()
+                    if (pendingAfter.candidates.size > pendingBefore) {
+                        appEventSink.emit(
+                            AppEvent.PendingMemoryAvailable(
+                                pending = pendingAfter,
+                                reason = "Есть кандидаты на сохранение в память. Посмотри их командой ${PendingMemoryCliCatalog.SHOW}."
+                            )
+                        )
+                    }
                 } catch (error: Exception) {
                     appEventSink.emit(AppEvent.RequestFailed(error.message))
                 }
@@ -145,7 +253,6 @@ class CliSessionController(
                 CliSessionControllerResult.Continue
             }
         }
-    }
 
     private fun switchModel(requestedModelId: String) {
         try {
@@ -178,6 +285,30 @@ class CliSessionController(
             appEventSink.emit(AppEvent.ModelSwitchFailed(error.message))
         }
     }
+
+    private fun parsePendingEdit(field: String, value: String): PendingMemoryEdit =
+        when (field.lowercase()) {
+            "text" -> PendingMemoryEdit.UpdateText(value)
+            "layer" -> PendingMemoryEdit.UpdateLayer(parseEditableLayer(value))
+            "category" -> PendingMemoryEdit.UpdateCategory(value)
+            else -> error("Поддерживаются только поля text, layer и category.")
+        }
+
+    private fun parseEditableLayer(value: String): MemoryLayer =
+        when (value.trim().lowercase()) {
+            "working", "work", "рабочая" -> MemoryLayer.WORKING
+            "long", "long-term", "долговременная" -> MemoryLayer.LONG_TERM
+            else -> error("Для pending-кандидата поддерживаются только слои working и long.")
+        }
+
+    private fun formatInvalidCommandReason(reason: InvalidCliCommandReason): String =
+        when (reason) {
+            is InvalidCliCommandReason.Usage -> "Используйте: ${reason.usage}."
+            is InvalidCliCommandReason.PendingEditUnsupportedField -> {
+                val supportedFields = reason.allowedFields.joinToString(", ")
+                "Поле редактирования должно быть одним из: $supportedFields."
+            }
+        }
 }
 
 /**

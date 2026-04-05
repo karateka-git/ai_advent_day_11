@@ -73,7 +73,7 @@ class BranchingMemoryCapabilityAdapterTest {
                 ChatMessage(ChatRole.ASSISTANT, "a1"),
                 ChatMessage(ChatRole.USER, "branch-u1")
             ),
-            state.shortTerm.messages
+            state.shortTerm.rawMessages
         )
     }
 
@@ -97,7 +97,12 @@ class BranchingMemoryCapabilityAdapterTest {
     private fun initialState(): MemoryState =
         MemoryState(
             shortTerm = ShortTermMemory(
-                messages = listOf(
+                rawMessages = listOf(
+                    ChatMessage(ChatRole.SYSTEM, "system"),
+                    ChatMessage(ChatRole.USER, "u1"),
+                    ChatMessage(ChatRole.ASSISTANT, "a1")
+                ),
+                derivedMessages = listOf(
                     ChatMessage(ChatRole.SYSTEM, "system"),
                     ChatMessage(ChatRole.USER, "u1"),
                     ChatMessage(ChatRole.ASSISTANT, "a1")

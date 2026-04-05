@@ -5,6 +5,7 @@ import agent.memory.core.MemoryStrategy
 import agent.memory.model.BranchConversationState
 import agent.memory.model.BranchingStrategyState
 import agent.memory.model.MemoryState
+import agent.memory.model.ShortTermMemory
 import agent.memory.strategy.MemoryStrategyType
 import llm.core.model.ChatMessage
 
@@ -18,7 +19,7 @@ class BranchingMemoryStrategy : MemoryStrategy {
     override val type: MemoryStrategyType = MemoryStrategyType.BRANCHING
 
     override fun effectiveContext(state: MemoryState): List<ChatMessage> =
-        state.shortTerm.messages.toList()
+        state.shortTerm.derivedMessages.toList()
 
     override fun refreshState(
         state: MemoryState,
@@ -30,13 +31,13 @@ class BranchingMemoryStrategy : MemoryStrategy {
                 listOf(
                     BranchConversationState(
                         name = BranchingStrategyState.DEFAULT_BRANCH_NAME,
-                        messages = state.shortTerm.messages
+                        messages = state.shortTerm.rawMessages
                     )
                 )
             } else {
                 branchingState.branches.map { branch ->
                     if (branch.name == branchingState.activeBranchName) {
-                        branch.copy(messages = state.shortTerm.messages)
+                        branch.copy(messages = state.shortTerm.rawMessages)
                     } else {
                         branch
                     }
@@ -44,7 +45,9 @@ class BranchingMemoryStrategy : MemoryStrategy {
             }
 
         return state.copy(
-            shortTerm = state.shortTerm.copy(
+            shortTerm = ShortTermMemory(
+                rawMessages = state.shortTerm.rawMessages,
+                derivedMessages = state.shortTerm.rawMessages,
                 strategyState = branchingState.copy(
                     activeBranchName = branchingState.activeBranchName.ifBlank { BranchingStrategyState.DEFAULT_BRANCH_NAME },
                     branches = branches
@@ -60,7 +63,7 @@ class BranchingMemoryStrategy : MemoryStrategy {
                 branches = listOf(
                     BranchConversationState(
                         name = BranchingStrategyState.DEFAULT_BRANCH_NAME,
-                        messages = state.shortTerm.messages
+                        messages = state.shortTerm.rawMessages
                     )
                 )
             )

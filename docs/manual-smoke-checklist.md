@@ -7,6 +7,7 @@
 - CLI-команды работают;
 - все пользовательские стратегии памяти работают;
 - persisted state сохраняется в ожидаемой структуре.
+- pending-кандидаты на сохранение памяти корректно показываются и управляются пользователем.
 
 Не входит в этот сценарий:
 - `compareStrategies`
@@ -16,7 +17,8 @@
 ## Подготовка
 
 1. Очистить runtime-файлы в `config/conversations/`.
-2. Собрать и запустить проект:
+2. Если старые smoke-артефакты больше не нужны, очистить `build/smoke-check/`.
+3. Собрать и запустить проект:
 
 ```powershell
 .\gradlew.bat build
@@ -24,24 +26,45 @@
 .\build\install\ai_advent_day_11\bin\ai_advent_day_11.bat
 ```
 
-3. После каждого сценария при необходимости смотреть JSON в:
+4. После каждого сценария при необходимости смотреть JSON в:
 
 ```text
 config/conversations/
 ```
+
+Versioned-сценарии scripted smoke-check лежат в:
+
+```text
+scripts/smoke-check/scenarios/
+```
+
+Для scripted smoke-check удобно сохранять результаты каждого нового прогона в отдельную подпапку внутри `build/smoke-check/`, а лишние файлы от предыдущих попыток удалять заранее.
 
 ### Scripted-прогон с корректной UTF-8 кодировкой
 
 Если нужно прогонять сценарий не вручную, а из заранее подготовленного файла команд, использовать helper-скрипт:
 
 ```powershell
-.\scripts\run-scripted-session.ps1 -ScenarioFile .\path\to\scenario.txt -ClearConversations
+.\scripts\run-scripted-session.ps1 -ScenarioFile .\scripts\smoke-check\scenarios\layered.txt -ClearConversations
 ```
 
 Он:
+- читает versioned-сценарий из репозитория;
 - принудительно запускает приложение в UTF-8 режиме;
 - корректно читает сценарий в UTF-8;
 - сохраняет вывод в UTF-8 файл внутри `build/smoke-check/`.
+
+Важно:
+- scripted-прогон нужно делать только по свежей собранной версии после `.\gradlew.bat installDist`;
+- scripted-сценарии нужно запускать последовательно, а не параллельно, потому что они используют общий `config/conversations`;
+- если перед этим менялись `Main.kt`, `scripts/run-scripted-session.ps1` или любая логика чтения консольного ввода, сначала обязательно заново выполнить:
+
+```powershell
+.\gradlew.bat build
+.\gradlew.bat installDist
+```
+
+- иначе helper может запустить старый `ai_advent_day_11.bat`, и проверка будет относиться не к текущему коду, а к предыдущей сборке.
 
 ## Базовый запуск
 
@@ -80,6 +103,8 @@ clear
 - token preview и ответ отображаются корректно;
 - `clear` очищает контекст, не ломая сессию.
 - команда `memory` показывает многослойное состояние памяти без падений.
+- команда `memory short` показывает только strategy-derived short-term контекст, а не сырой журнал сообщений;
+- команда `memory pending` работает без падений и показывает пустой список, если pending-кандидатов нет.
 
 ## Проверка layered memory
 
@@ -98,8 +123,10 @@ clear
 4. Проверить:
 
 ```text
+memory short
 memory long
 memory working
+memory pending
 ```
 
 5. Затем спросить:
@@ -110,14 +137,17 @@ memory working
 
 ### Ожидаемый результат
 
-- в `memory long` есть стиль общения;
-- в `memory working` есть цель, срок и интеграция;
+- `memory short` показывает только derived short-term представление активной стратегии;
+- в `memory long` стиль общения либо уже сохранён, либо показан в `memory pending` как кандидат на подтверждение;
+- в `memory working` есть цель и интеграция;
+- срок может быть либо сразу в `memory working`, либо в `memory pending`, если для него требуется подтверждение;
+- `memory pending` показывает кандидатов в память, если allocator или confirmation policy не применили их автоматически;
 - ответ ассистента использует данные из working и long-term памяти;
 - short-term стратегия продолжает работать независимо от working/long-term слоёв.
-- в persisted JSON есть отдельные секции:
-  - `shortTerm`
-  - `working`
-  - `longTerm`
+- в persisted JSON используется layered-структура:
+  - `shortTerm` обязателен;
+  - `working`, `longTerm`, `pending` могут присутствовать или отсутствовать, если слой пустой;
+  - отсутствие пустого слоя трактуется как пустое состояние и не считается ошибкой.
 
 ## Стратегия `Без сжатия`
 
@@ -136,6 +166,7 @@ use <model_id>
 Мы собираем ТЗ на Telegram-бота.
 Срок запуска две недели.
 Интеграция только с Google Sheets.
+memory short
 Напомни ограничения проекта.
 ```
 
@@ -144,9 +175,11 @@ use <model_id>
 - ответ содержит оба факта:
   - две недели;
   - только Google Sheets;
-- в JSON есть `shortTerm.messages`;
+- `memory short` показывает полный derived short-term контекст, потому что для `no_compression` он совпадает с полной историей;
+- в JSON есть `shortTerm.rawMessages` и `shortTerm.derivedMessages`;
 - `shortTerm.strategyState` отсутствует или равен `null`;
-- `working` и `longTerm` сохраняются отдельно от short-term слоя.
+- `working`, `longTerm` и `pending` не смешиваются с short-term слоем;
+- если `deadline` или другой чувствительный факт ушёл в `pending`, это не считается ошибкой сценария.
 
 ## Стратегия `Сжатие через summary`
 
@@ -173,7 +206,7 @@ CRM на первом этапе не нужна.
   - `summary`
   - `coveredMessagesCount`
 - нет facts- или branching-полей.
-- `working` и `longTerm` остаются в отдельных секциях верхнего уровня.
+- `working`, `longTerm` и `pending` остаются отдельными верхнеуровневыми слоями, даже если часть из них не сериализована из-за пустого состояния.
 
 ## Стратегия `Скользящее окно`
 
@@ -187,15 +220,18 @@ CRM на первом этапе не нужна.
 Первый факт: бюджет до 120 тысяч.
 Второй факт: запуск за 2 недели.
 Третий факт: только Telegram и Google Sheets.
+memory short
 Повтори только то, что осталось в коротком контексте.
 ```
 
 ### Ожидаемый результат
 
 - ответ сильнее зависит от последних сообщений, чем от ранних;
-- в JSON сохраняются `shortTerm.messages`;
+- `memory short` показывает только derived short-term окно, а не весь накопленный журнал;
+- в JSON сохраняются `shortTerm.rawMessages` и `shortTerm.derivedMessages`;
 - `shortTerm.strategyState` отсутствует или равен `null`;
-- `working` и `longTerm` не смешиваются с short-term данными.
+- `working`, `longTerm` и `pending` не смешиваются с short-term данными;
+- отсутствие пустых `working` или `longTerm` в JSON допустимо.
 
 ## Стратегия `Sticky Facts`
 
@@ -214,18 +250,20 @@ CRM на первом этапе не нужна.
 4. Затем спросить:
 
 ```text
+memory short
 Сформулируй текущие ограничения и срок проекта.
 ```
 
 ### Ожидаемый результат
 
+- `memory short` показывает derived short-term контекст стратегии Sticky Facts, а не сырой журнал;
 - ответ опирается на сохранённые facts;
 - в JSON `shortTerm.strategyState` имеет тип `sticky_facts`;
 - внутри `shortTerm.strategyState` есть:
   - `facts`
   - `coveredMessagesCount`
 - нет summary- или branching-полей.
-- `working` и `longTerm` остаются отдельными секциями верхнего уровня.
+- `working`, `longTerm` и `pending` остаются отдельными верхнеуровневыми слоями, даже если часть из них опущена как пустая.
 
 ## Стратегия `Ветки диалога`
 
@@ -286,35 +324,38 @@ branches
   - `latestCheckpointName`
   - `checkpoints`
   - `branches`
-- `working` и `longTerm` остаются общими и не становятся branch-aware на этом этапе.
+- `working`, `longTerm` и `pending` остаются общими и не становятся branch-aware на этом этапе.
 
 ## Проверка persisted state
 
 После прогонов по стратегиям проверить:
 
-1. В корне состояния есть:
-- `shortTerm`
-- `working`
-- `longTerm`
+1. В корне состояния всегда есть `shortTerm`.
 
-2. Внутри `shortTerm` есть:
-- `messages`
+2. `working`, `longTerm` и `pending`:
+- сериализуются как отдельные верхнеуровневые секции, если в них есть данные;
+- могут отсутствовать в JSON, если слой пустой;
+- отсутствие пустого слоя трактуется как пустое состояние, а не как дефект.
+
+3. Внутри `shortTerm` есть:
+- `rawMessages`
+- `derivedMessages`
 - `strategyState`
 
-3. Для stateful стратегий `shortTerm.strategyState` сериализуется как отдельный тип:
+4. Для stateful стратегий `shortTerm.strategyState` сериализуется как отдельный тип:
 - `summary_compression`
 - `sticky_facts`
 - `branching`
 
-4. Для простых стратегий:
+5. Для простых стратегий:
 - `no_compression`
 - `sliding_window`
 
 `shortTerm.strategyState` отсутствует или равен `null`.
 
-5. `working.notes` и `longTerm.notes` сериализуются отдельно от short-term контекста.
+6. `working.notes`, `longTerm.notes` и `pending.candidates` сериализуются отдельно от short-term контекста, когда соответствующий слой не пуст.
 
-6. Нет старого верхнеуровневого формата с `messages` и `strategyState`.
+7. Нет старого верхнеуровневого формата с `messages` и `strategyState` в корне persisted state.
 
 ## Критерий успешного smoke-check
 
@@ -322,6 +363,7 @@ Smoke-check считается успешным, если:
 - приложение запускается;
 - базовые команды CLI работают;
 - все 5 стратегий проходят свои сценарии без ошибок;
-- persisted JSON соответствует ожидаемой структуре;
+- pending-memory flow работает без падений и показывает кандидатов там, где запись требует подтверждения;
+- persisted JSON соответствует ожидаемой layered-структуре с учётом допустимого отсутствия пустых секций;
 - ветки диалога действительно независимы.
 

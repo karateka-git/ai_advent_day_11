@@ -4,6 +4,7 @@ package ui.cli
  * Единое описание встроенных CLI-команд.
  */
 object CliCommands {
+    const val HELP = "help"
     const val EXIT = "exit"
     const val QUIT = "quit"
     const val CLEAR = "clear"

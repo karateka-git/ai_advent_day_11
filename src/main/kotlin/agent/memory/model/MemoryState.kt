@@ -23,13 +23,18 @@ data class MemoryNote(
 )
 
 /**
- * Краткосрочная память: текущий диалог и derived state выбранной стратегии.
+ * Краткосрочная память: сырой журнал текущей сессии и его представление,
+ * вычисленное активной short-term стратегией.
  *
- * @property messages накопленный short-term диалог.
- * @property strategyState derived state активной short-term стратегии.
+ * @property rawMessages полный журнал short-term переписки, который служит
+ * источником истины для пересборки стратегии.
+ * @property derivedMessages short-term представление, вычисленное активной
+ * стратегией из сырого журнала.
+ * @property strategyState strategy-specific состояние активной short-term стратегии.
  */
 data class ShortTermMemory(
-    val messages: List<ChatMessage> = emptyList(),
+    val rawMessages: List<ChatMessage> = emptyList(),
+    val derivedMessages: List<ChatMessage> = emptyList(),
     val strategyState: StrategyState? = null
 )
 
@@ -54,12 +59,14 @@ data class LongTermMemory(
 /**
  * Полный in-memory снимок памяти ассистента с явным разделением по слоям.
  *
- * @property shortTerm краткосрочная память и derived state active strategy.
+ * @property shortTerm краткосрочная память с сырым журналом и derived-представлением стратегии.
  * @property working рабочая память текущей задачи.
  * @property longTerm долговременная память пользователя и проекта.
+ * @property pending кандидаты на сохранение, ожидающие подтверждения пользователя.
  */
 data class MemoryState(
     val shortTerm: ShortTermMemory = ShortTermMemory(),
     val working: WorkingMemory = WorkingMemory(),
-    val longTerm: LongTermMemory = LongTermMemory()
+    val longTerm: LongTermMemory = LongTermMemory(),
+    val pending: PendingMemoryState = PendingMemoryState()
 )
